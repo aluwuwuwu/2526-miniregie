@@ -113,6 +113,31 @@ describe('computeScore — priorités', () => {
   });
 });
 
+describe('computeScore — same-author penalty', () => {
+  it('no penalty when sameAuthorReady is 0 or omitted', () => {
+    const now = Date.now();
+    const a = computeScore(item({ submittedAt: now - 30 * MIN }), { displayed: 0, skipped: 0 }, now);
+    const b = computeScore(item({ submittedAt: now - 30 * MIN }), { displayed: 0, skipped: 0, sameAuthorReady: 0 }, now);
+    expect(a).toBe(b);
+  });
+
+  it('each same-author ready item costs 30 points', () => {
+    const now = Date.now();
+    const base  = computeScore(item({ submittedAt: now - 30 * MIN }), { displayed: 0, skipped: 0 }, now);
+    const with3 = computeScore(item({ submittedAt: now - 30 * MIN }), { displayed: 0, skipped: 0, sameAuthorReady: 3 }, now);
+    expect(with3).toBe(base - 3 * 30);
+  });
+
+  it('a new submission from a quiet user outscores a heavy submitter', () => {
+    const now = Date.now();
+    // Heavy submitter: 5 items in queue, cold item
+    const spammer = computeScore(item({ submittedAt: now - 2 * HOUR }), { displayed: 0, skipped: 0, sameAuthorReady: 5 }, now);
+    // New contributor: first item, fresh
+    const newcomer = computeScore(item({ submittedAt: now - 1 * MIN }), { displayed: 0, skipped: 0, sameAuthorReady: 0 }, now);
+    expect(newcomer).toBeGreaterThan(spammer);
+  });
+});
+
 describe('computeScore — now par défaut', () => {
   it('utilise Date.now() si now non fourni', () => {
     const i = item({ submittedAt: Date.now() - 30 * MIN });

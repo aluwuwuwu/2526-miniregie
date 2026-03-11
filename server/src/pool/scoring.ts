@@ -10,11 +10,12 @@ function freshnessScore(age: number): number {
 
 export function computeScore(
   item:   { priority: number; submittedAt: number },
-  counts: { displayed: number; skipped: number },
+  counts: { displayed: number; skipped: number; sameAuthorReady?: number },
   now:    number = Date.now(),
 ): number {
   return item.priority
     + freshnessScore(now - item.submittedAt)
-    - counts.displayed * 40
-    - counts.skipped   * 120;
+    - counts.displayed        * 40
+    - counts.skipped          * 120
+    - (counts.sameAuthorReady ?? 0) * 30;
 }
