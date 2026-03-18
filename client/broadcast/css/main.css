@@ -1,4 +1,7 @@
-/* MiniRégie TV — broadcast SPA */
+/* MiniRégie TV — broadcast SPA
+   TV reference: 1920×1080, safe area 5% on all sides
+   BEM naming throughout
+   Dark theme, system-ui font */
 
 *, *::before, *::after {
   box-sizing: border-box;
@@ -10,6 +13,35 @@
   font-family: system-ui, sans-serif;
   background: #0a0a0a;
   color: #fff;
+
+  /* TV-safe area (5%) */
+  --safe: 5%;
+  --safe-h: calc(100vh * 0.05);
+  --safe-w: calc(100vw * 0.05);
+
+  /* Palette */
+  --color-bg:         #0a0a0a;
+  --color-surface:    #181818;
+  --color-surface-2:  #242424;
+  --color-border:     rgba(255 255 255 / 0.12);
+  --color-accent:     #e8c640;
+  --color-panic:      #e03030;
+  --color-ticker-bg:  #111;
+  --color-ticker-fg:  #e8c640;
+  --color-note-bg:    #1a1a2e;
+  --color-caption-bg: rgba(0 0 0 / 0.72);
+
+  /* Typography scale — TV-safe, legible from 3m */
+  --text-xs:   1.4rem;
+  --text-sm:   1.8rem;
+  --text-base: 2.4rem;
+  --text-lg:   3.2rem;
+  --text-xl:   4.8rem;
+  --text-2xl:  7.2rem;
+  --text-3xl:  11rem;
+
+  /* Transitions (non-critical animations only) */
+  --transition-layout: opacity 0.25s ease;
 }
 
 body {
@@ -18,7 +50,7 @@ body {
   overflow: hidden;
 }
 
-/* ─── Couches racines ─────────────────────────────────────────────────────── */
+/* ─── Root layers ─────────────────────────────────────────────────────────── */
 
 #app-layer,
 #persistent-layer,
@@ -37,11 +69,21 @@ body {
 }
 
 #panic-layer {
-  z-index: 100;
+  z-index: 9999;
   display: none;
-  background: #0a0a0a;
+  background: var(--color-bg);
   align-items: center;
   justify-content: center;
+  flex-direction: column;
+  gap: 2rem;
+}
+
+#panic-layer p {
+  font-size: var(--text-xl);
+  color: var(--color-panic);
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
 }
 
 /* ─── Slots ───────────────────────────────────────────────────────────────── */
@@ -54,4 +96,557 @@ body {
 
 #slot-bg {
   visibility: hidden;
+}
+
+/* ─── App base ────────────────────────────────────────────────────────────── */
+
+.app {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* ─── Layout — app-layer classes ──────────────────────────────────────────── */
+
+/* jam-mode mounts into slotFg which has position:absolute inset:0.
+   Layout classes control how jam-slots are arranged inside. */
+
+.app--jam-mode {
+  display: grid;
+  padding: var(--safe-h) var(--safe-w);
+}
+
+/* IDLE — countdown only (persistent layer), no app content */
+.app--jam-mode.layout--idle {
+  /* Nothing visible in app-layer */
+}
+
+/* MEDIA_FULL — youtube full screen */
+.app--jam-mode.layout--media-full {
+  grid-template-rows: 1fr;
+  grid-template-columns: 1fr;
+}
+
+/* VISUAL_FULL — photo/gif/clip/link(thumb) full screen */
+.app--jam-mode.layout--visual-full {
+  grid-template-rows: 1fr;
+  grid-template-columns: 1fr;
+}
+
+/* NOTE_CARD — centered card */
+.app--jam-mode.layout--note-card {
+  grid-template-rows: 1fr;
+  grid-template-columns: 1fr;
+}
+
+/* MEDIA_WITH_VISUAL — youtube 60% + visual 40% */
+.app--jam-mode.layout--media-with-visual {
+  grid-template-columns: 60fr 40fr;
+  grid-template-rows: 1fr;
+}
+
+/* MEDIA_WITH_CAPTION — youtube + caption band 25% bottom */
+.app--jam-mode.layout--media-with-caption {
+  grid-template-columns: 1fr;
+  grid-template-rows: 75fr 25fr;
+}
+
+/* MEDIA_WITH_VISUAL_AND_CAPTION — youtube 60% + visual 40% + caption band */
+.app--jam-mode.layout--media-with-visual-and-caption {
+  grid-template-columns: 60fr 40fr;
+  grid-template-rows: 80fr 20fr;
+}
+.app--jam-mode.layout--media-with-visual-and-caption .jam-slot--caption {
+  grid-column: 1 / -1;
+}
+
+/* VISUAL_WITH_CAPTION — visual + caption band 25% */
+.app--jam-mode.layout--visual-with-caption {
+  grid-template-columns: 1fr;
+  grid-template-rows: 75fr 25fr;
+}
+
+/* DUAL_VISUAL — two visuals side by side */
+.app--jam-mode.layout--dual-visual {
+  grid-template-columns: 1fr 1fr;
+  grid-template-rows: 1fr;
+}
+
+/* ─── Jam slots ───────────────────────────────────────────────────────────── */
+
+.jam-slot {
+  position: relative;
+  overflow: hidden;
+  min-height: 0;
+  min-width: 0;
+}
+
+.jam-slot--caption {
+  background: var(--color-caption-bg);
+  display: flex;
+  align-items: center;
+  padding: 1.5rem var(--safe-w);
+}
+
+/* ─── Media items ─────────────────────────────────────────────────────────── */
+
+.media-item {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  position: relative;
+}
+
+/* Photo */
+.media-item--photo .media-item__image,
+.media-item--gif .media-item__image {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+/* Caption overlay on photo */
+.media-item__caption {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  padding: 1rem 1.5rem;
+  background: var(--color-caption-bg);
+  font-size: var(--text-sm);
+  line-height: 1.4;
+}
+
+/* Clip */
+.media-item--clip .media-item__video {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+/* Note */
+.media-item--note {
+  background: var(--color-note-bg);
+  flex-direction: column;
+  gap: 2rem;
+  padding: var(--safe-h) var(--safe-w);
+}
+
+.media-item__note-text {
+  font-size: var(--text-lg);
+  line-height: 1.5;
+  text-align: center;
+  max-width: 80%;
+  font-style: italic;
+}
+
+.media-item__author {
+  font-size: var(--text-sm);
+  color: rgba(255 255 255 / 0.6);
+}
+
+/* YouTube */
+.media-item--youtube {
+  background: #000;
+}
+
+.media-item__youtube {
+  width: 100%;
+  height: 100%;
+  border: none;
+  display: block;
+}
+
+/* Link */
+.media-item--link {
+  flex-direction: column;
+  background: var(--color-surface);
+  padding: var(--safe-h) var(--safe-w);
+  gap: 1.5rem;
+}
+
+.media-item--link .media-item__image {
+  width: 100%;
+  height: 60%;
+  object-fit: cover;
+  border-radius: 0.4rem;
+}
+
+.media-item__link-meta {
+  display: flex;
+  flex-direction: column;
+  gap: 0.8rem;
+}
+
+.media-item__link-title {
+  font-size: var(--text-base);
+  font-weight: 700;
+  line-height: 1.3;
+}
+
+.media-item__link-desc {
+  font-size: var(--text-sm);
+  color: rgba(255 255 255 / 0.7);
+  line-height: 1.4;
+}
+
+.media-item__link-site {
+  font-size: var(--text-xs);
+  color: var(--color-accent);
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+}
+
+/* ─── Jam caption (slot caption content) ──────────────────────────────────── */
+
+.jam-caption {
+  font-size: var(--text-base);
+  line-height: 1.5;
+  color: rgba(255 255 255 / 0.95);
+  width: 100%;
+}
+
+/* ─── Persistent layer ────────────────────────────────────────────────────── */
+
+/* Countdown */
+.countdown {
+  position: absolute;
+  font-variant-numeric: tabular-nums;
+  font-weight: 700;
+  transition: font-size 0.5s ease, top 0.5s ease, right 0.5s ease;
+  z-index: 10;
+}
+
+.countdown--compact {
+  top: var(--safe-h);
+  right: var(--safe-w);
+  font-size: var(--text-base);
+  color: rgba(255 255 255 / 0.8);
+}
+
+.countdown--large {
+  top: var(--safe-h);
+  right: var(--safe-w);
+  font-size: var(--text-xl);
+  color: #fff;
+  text-shadow: 0 0 20px rgba(232 198 64 / 0.5);
+}
+
+.countdown--fullscreen {
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  font-size: var(--text-3xl);
+  color: var(--color-panic);
+  text-shadow: 0 0 40px rgba(224 48 48 / 0.7);
+}
+
+/* QR block */
+.qr-block {
+  position: absolute;
+  bottom: var(--safe-h);
+  right: var(--safe-w);
+  background: rgba(0 0 0 / 0.6);
+  padding: 0.8rem 1.2rem;
+  border-radius: 0.4rem;
+  border: 1px solid var(--color-border);
+}
+
+.qr-block__url {
+  font-size: var(--text-sm);
+  color: var(--color-accent);
+  font-weight: 600;
+}
+
+/* Ticker */
+.ticker-bar {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  height: 8vh;
+  background: var(--color-ticker-bg);
+  border-top: 1px solid var(--color-border);
+  display: flex;
+  align-items: center;
+  overflow: hidden;
+}
+
+.ticker-bar__label {
+  flex-shrink: 0;
+  padding: 0 1.5rem;
+  font-family: monospace;
+  font-size: var(--text-sm);
+  color: var(--color-ticker-fg);
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  border-right: 1px solid var(--color-border);
+  height: 100%;
+  display: flex;
+  align-items: center;
+}
+
+.ticker-content {
+  display: inline-block;
+  white-space: nowrap;
+  padding-left: 100%;
+  font-size: var(--text-sm);
+  color: #fff;
+  animation: ticker-scroll 20s linear forwards;
+}
+
+@keyframes ticker-scroll {
+  from { transform: translateX(0); }
+  to   { transform: translateX(-200%); }
+}
+
+/* ─── Pre-jam idle ─────────────────────────────────────────────────────────── */
+
+.app--pre-jam-idle {
+  flex-direction: column;
+  gap: 3rem;
+  background: var(--color-bg);
+}
+
+.pre-jam-idle {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2rem;
+}
+
+.pre-jam-idle__title {
+  font-size: var(--text-2xl);
+  font-weight: 700;
+  color: var(--color-accent);
+  letter-spacing: 0.05em;
+}
+
+.pre-jam-idle__clock {
+  font-size: var(--text-xl);
+  font-variant-numeric: tabular-nums;
+  color: rgba(255 255 255 / 0.6);
+}
+
+/* ─── Countdown to JAM ─────────────────────────────────────────────────────── */
+
+.app--countdown-to-jam {
+  flex-direction: column;
+  background: var(--color-bg);
+}
+
+.countdown-to-jam {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2rem;
+}
+
+.countdown-to-jam__label {
+  font-size: var(--text-lg);
+  color: rgba(255 255 255 / 0.6);
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+}
+
+.countdown-to-jam__display {
+  font-size: var(--text-3xl);
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  color: var(--color-accent);
+  text-shadow: 0 0 60px rgba(232 198 64 / 0.4);
+}
+
+/* ─── End of countdown ─────────────────────────────────────────────────────── */
+
+.app--end-of-countdown {
+  flex-direction: column;
+  background: var(--color-bg);
+}
+
+.end-of-countdown {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 3rem;
+  padding: var(--safe-h) var(--safe-w);
+  text-align: center;
+}
+
+.end-of-countdown__title {
+  font-size: var(--text-2xl);
+  font-weight: 700;
+  color: var(--color-accent);
+}
+
+.end-of-countdown__stats {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.end-of-countdown__stat {
+  font-size: var(--text-base);
+  color: rgba(255 255 255 / 0.7);
+}
+
+/* ─── Post-jam idle ─────────────────────────────────────────────────────────── */
+
+.app--post-jam-idle {
+  flex-direction: column;
+  background: var(--color-bg);
+}
+
+.post-jam-idle {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2rem;
+  padding: var(--safe-h) var(--safe-w);
+  text-align: center;
+}
+
+.post-jam-idle__title {
+  font-size: var(--text-xl);
+  font-weight: 700;
+  color: rgba(255 255 255 / 0.9);
+}
+
+.post-jam-idle__subtitle {
+  font-size: var(--text-base);
+  color: rgba(255 255 255 / 0.5);
+}
+
+/* ─── Micro-trottoir ─────────────────────────────────────────────────────────── */
+
+.app--micro-trottoir {
+  background: var(--color-bg);
+}
+
+.micro-trottoir {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-direction: column;
+  padding: var(--safe-h) var(--safe-w);
+}
+
+/* Intro / Outro */
+.micro-trottoir--intro,
+.micro-trottoir--outro {
+  background: #0a0a0a;
+  gap: 1.5rem;
+}
+
+.micro-trottoir__intro-label {
+  font-size: var(--text-2xl);
+  font-weight: 900;
+  letter-spacing: 0.15em;
+  text-transform: uppercase;
+  color: var(--color-accent);
+}
+
+.micro-trottoir__intro-sub {
+  font-size: var(--text-base);
+  color: rgba(255 255 255 / 0.6);
+  letter-spacing: 0.08em;
+}
+
+.micro-trottoir__outro-label {
+  font-size: var(--text-lg);
+  color: rgba(255 255 255 / 0.7);
+  font-style: italic;
+}
+
+/* Question card */
+.micro-trottoir--question {
+  background: var(--color-surface);
+}
+
+.micro-trottoir__question-text {
+  font-size: var(--text-xl);
+  font-weight: 700;
+  line-height: 1.4;
+  text-align: center;
+  max-width: 80%;
+  color: #fff;
+}
+
+/* Answer — video */
+.micro-trottoir--answer {
+  background: #000;
+  position: relative;
+  align-items: stretch;
+  justify-content: stretch;
+}
+
+.micro-trottoir__video {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+/* Answer — text */
+.micro-trottoir--text {
+  background: var(--color-note-bg);
+}
+
+.micro-trottoir__answer-text {
+  font-size: var(--text-lg);
+  line-height: 1.5;
+  text-align: center;
+  max-width: 75%;
+  font-style: italic;
+}
+
+/* Photo */
+.micro-trottoir--photo {
+  background: #000;
+  position: relative;
+  align-items: stretch;
+  justify-content: stretch;
+}
+
+.micro-trottoir__photo-img {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+/* Bandeau — bottom name bar */
+.micro-trottoir__bandeau {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  padding: 1.5rem var(--safe-w);
+  background: linear-gradient(to top, rgba(0 0 0 / 0.85), transparent);
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+
+.micro-trottoir__bandeau-name {
+  font-size: var(--text-base);
+  font-weight: 700;
+  color: #fff;
+}
+
+.micro-trottoir__bandeau-meta {
+  font-size: var(--text-sm);
+  color: rgba(255 255 255 / 0.7);
+  font-style: italic;
 }
