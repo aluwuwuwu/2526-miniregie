@@ -126,6 +126,36 @@ export class PoolManager extends EventEmitter {
     return {} as MediaItem['content'];
   }
 
+  // ─── Stats (for GlobalState) ────────────────────────────────────────────────
+
+  getStats(): GlobalState['pool'] {
+    const now = Date.now();
+    const FRESH_WINDOW = 15 * 60_000;
+    const rows = getReadyItems({ excludeTypes: ['ticker'] });
+    const authorCounts = this.computeAuthorReadyCounts(rows);
+
+    let freshCount = 0;
+    const scored = rows
+      .map(row => {
+        if (now - row.submittedAt < FRESH_WINDOW) freshCount++;
+        return {
+          row,
+          score: computeScore(row, {
+            displayed:       row.displayedCount,
+            skipped:         row.skippedCount,
+            sameAuthorReady: (authorCounts.get(row.author.participantId) ?? 1) - 1,
+          }, now),
+        };
+      })
+      .sort((a, b) => b.score - a.score);
+
+    return {
+      total:         rows.length,
+      fresh:         freshCount,
+      queueSnapshot: scored.slice(0, 5).map(s => s.row),
+    };
+  }
+
   // ─── Read ───────────────────────────────────────────────────────────────────
 
   nextItem(filters: NextItemFilters = {}): MediaItem | null {

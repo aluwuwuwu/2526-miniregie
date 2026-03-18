@@ -52,7 +52,7 @@ export interface InterviewSubject {
 }
 
 export interface MediaAuthor {
-  participantId: string; // 'system:admin' | 'system:narrator' | uuid
+  participantId: string; // 'system:admin' | uuid
   displayName: string;
   team: string;
   role: string;
@@ -71,9 +71,7 @@ export interface MediaEvent {
 
 export interface Participant {
   id: string;
-  oauthId: string;
-  oauthProvider: 'google';
-  email: string;
+  username: string | null; // null for phantom system accounts (system:admin)
   displayName: string;
   team: string;
   role: string;

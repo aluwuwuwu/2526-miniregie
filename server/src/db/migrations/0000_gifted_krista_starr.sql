@@ -29,9 +29,8 @@ CREATE TABLE `media_items` (
 --> statement-breakpoint
 CREATE TABLE `participants` (
 	`id` text PRIMARY KEY NOT NULL,
-	`oauth_id` text,
-	`oauth_provider` text,
-	`email` text,
+	`username` text,
+	`password_hash` text,
 	`display_name` text NOT NULL,
 	`team` text DEFAULT '' NOT NULL,
 	`role` text DEFAULT '' NOT NULL,
@@ -43,5 +42,4 @@ CREATE TABLE `participants` (
 	`ban_reason` text
 );
 --> statement-breakpoint
-CREATE UNIQUE INDEX `participants_oauth_id_unique` ON `participants` (`oauth_id`);--> statement-breakpoint
-CREATE UNIQUE INDEX `participants_email_unique` ON `participants` (`email`);
+CREATE UNIQUE INDEX `participants_username_unique` ON `participants` (`username`);

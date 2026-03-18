@@ -18,12 +18,9 @@ export type ScoredRow = MediaItem & {
   lastActivityAt: number | null; // used for 5min cooldown
 };
 
-interface OAuthData {
-  oauthId:       string;
-  oauthProvider: 'google';
-  email:         string;
-  displayName:   string;
-  avatarUrl:     string | null;
+export interface AllItemsFilters {
+  status?:   MediaStatus;
+  authorId?: string;
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -47,6 +44,22 @@ function rowToMediaItem(row: {
       team:          row.authorTeam,
       role:          row.authorRole,
     },
+  };
+}
+
+function rowToParticipant(row: typeof participants.$inferSelect): Participant {
+  return {
+    id:          row.id,
+    username:    row.username ?? null,
+    displayName: row.displayName,
+    team:        row.team,
+    role:        row.role,
+    avatarUrl:   row.avatarUrl ?? null,
+    firstSeenAt: row.firstSeenAt,
+    lastSeenAt:  row.lastSeenAt,
+    banned:      row.banned,
+    bannedAt:    row.bannedAt ?? null,
+    banReason:   row.banReason ?? null,
   };
 }
 
@@ -137,6 +150,38 @@ export function getReadyItems(filters: ReadyItemFilters = {}): ScoredRow[] {
   return rows.map(row => ({ ...rowToMediaItem(row), displayedCount: row.displayedCount, skippedCount: row.skippedCount, lastActivityAt: row.lastActivityAt }));
 }
 
+export function getAllItems(filters: AllItemsFilters = {}): MediaItem[] {
+  const conditions: ReturnType<typeof eq>[] = [];
+  if (filters.status)   conditions.push(eq(mediaItems.status, filters.status));
+  if (filters.authorId) conditions.push(eq(mediaItems.authorId, filters.authorId));
+
+  const baseQuery = db.select({
+    id:                mediaItems.id,
+    type:              mediaItems.type,
+    content:           mediaItems.content,
+    priority:          mediaItems.priority,
+    status:            mediaItems.status,
+    pinned:            mediaItems.pinned,
+    submittedAt:       mediaItems.submittedAt,
+    authorId:          mediaItems.authorId,
+    authorDisplayName: participants.displayName,
+    authorTeam:        participants.team,
+    authorRole:        participants.role,
+  })
+  .from(mediaItems)
+  .innerJoin(participants, eq(mediaItems.authorId, participants.id));
+
+  const rows = conditions.length > 0
+    ? baseQuery.where(and(...conditions)).all()
+    : baseQuery.all();
+
+  return rows.map(rowToMediaItem);
+}
+
+export function deleteItem(id: string): void {
+  db.delete(mediaItems).where(eq(mediaItems.id, id)).run();
+}
+
 export function getLastSubmissionAt(participantId: string): number | null {
   const row = db.select({ value: max(mediaItems.submittedAt) })
     .from(mediaItems)
@@ -172,56 +217,63 @@ export function insertEvent(event: MediaEvent): void {
 
 // ─── participants ─────────────────────────────────────────────────────────────
 
-function rowToParticipant(row: typeof participants.$inferSelect): Participant {
-  return {
-    id:            row.id,
-    oauthId:       row.oauthId!,
-    oauthProvider: row.oauthProvider as 'google',
-    email:         row.email!,
-    displayName:   row.displayName,
-    team:          row.team,
-    role:          row.role,
-    avatarUrl:     row.avatarUrl ?? null,
-    firstSeenAt:   row.firstSeenAt,
-    lastSeenAt:    row.lastSeenAt,
-    banned:        row.banned,
-    bannedAt:      row.bannedAt ?? null,
-    banReason:     row.banReason ?? null,
-  };
-}
-
 export function getParticipantById(id: string): Participant | null {
   const row = db.select().from(participants).where(eq(participants.id, id)).get();
   return row ? rowToParticipant(row) : null;
 }
 
-export function getParticipantByOauthId(oauthId: string, provider: string): Participant | null {
-  const row = db.select().from(participants)
-    .where(and(eq(participants.oauthId, oauthId), eq(participants.oauthProvider, provider)))
-    .get();
+export function getParticipantByUsername(username: string): Participant | null {
+  const row = db.select().from(participants).where(eq(participants.username, username)).get();
   return row ? rowToParticipant(row) : null;
 }
 
-export function upsertParticipant(data: OAuthData): Participant {
+/**
+ * Returns the raw password hash for a participant by ID.
+ * Used only by the auth route — not exposed on the Participant interface.
+ */
+export function getPasswordHash(participantId: string): string | null {
+  const row = db.select({ passwordHash: participants.passwordHash })
+    .from(participants)
+    .where(eq(participants.id, participantId))
+    .get();
+  return row?.passwordHash ?? null;
+}
+
+export function createParticipant(data: {
+  username:     string;
+  passwordHash: string;
+  displayName:  string;
+  team:         string;
+}): Participant {
   const now = Date.now();
   const row = db.insert(participants)
     .values({
-      id:            crypto.randomUUID(),
-      oauthId:       data.oauthId,
-      oauthProvider: data.oauthProvider,
-      email:         data.email,
-      displayName:   data.displayName,
-      avatarUrl:     data.avatarUrl,
-      firstSeenAt:   now,
-      lastSeenAt:    now,
-    })
-    .onConflictDoUpdate({
-      target: participants.oauthId,
-      set:    { displayName: data.displayName, avatarUrl: data.avatarUrl, lastSeenAt: now },
+      id:           crypto.randomUUID(),
+      username:     data.username,
+      passwordHash: data.passwordHash,
+      displayName:  data.displayName,
+      team:         data.team,
+      role:         'participant',
+      firstSeenAt:  now,
+      lastSeenAt:   now,
     })
     .returning()
     .get();
   return rowToParticipant(row);
+}
+
+export function setAvatarUrl(id: string, avatarUrl: string): void {
+  db.update(participants).set({ avatarUrl }).where(eq(participants.id, id)).run();
+}
+
+export function getTeams(): string[] {
+  const rows = db
+    .selectDistinct({ team: participants.team })
+    .from(participants)
+    .all();
+  return rows
+    .map(r => r.team)
+    .filter((t): t is string => typeof t === 'string' && t.length > 0);
 }
 
 export function setParticipantLastSeen(id: string, at: number): void {

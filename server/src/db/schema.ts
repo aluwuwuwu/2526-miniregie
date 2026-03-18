@@ -2,19 +2,18 @@ import { sqliteTable, text, integer } from 'drizzle-orm/sqlite-core';
 import type { MediaContent, MediaType, MediaStatus, MediaEventType, BroadcastEventType } from '../../../shared/types.js';
 
 export const participants = sqliteTable('participants', {
-  id:            text('id').primaryKey(),           // uuid | 'system:admin' | 'system:narrator'
-  oauthId:       text('oauth_id').unique(),         // null for system accounts
-  oauthProvider: text('oauth_provider'),
-  email:         text('email').unique(),
-  displayName:   text('display_name').notNull(),
-  team:          text('team').notNull().default(''),
-  role:          text('role').notNull().default(''),
-  avatarUrl:     text('avatar_url'),
-  firstSeenAt:   integer('first_seen_at').notNull(),
-  lastSeenAt:    integer('last_seen_at').notNull(),
-  banned:        integer('banned', { mode: 'boolean' }).notNull().default(false),
-  bannedAt:      integer('banned_at'),
-  banReason:     text('ban_reason'),
+  id:           text('id').primaryKey(),       // uuid | 'system:admin'
+  username:     text('username').unique(),      // null for phantom system accounts
+  passwordHash: text('password_hash'),          // null for phantom system accounts
+  displayName:  text('display_name').notNull(),
+  team:         text('team').notNull().default(''),
+  role:         text('role').notNull().default(''),
+  avatarUrl:    text('avatar_url'),
+  firstSeenAt:  integer('first_seen_at').notNull(),
+  lastSeenAt:   integer('last_seen_at').notNull(),
+  banned:       integer('banned', { mode: 'boolean' }).notNull().default(false),
+  bannedAt:     integer('banned_at'),
+  banReason:    text('ban_reason'),
 });
 
 export const mediaItems = sqliteTable('media_items', {

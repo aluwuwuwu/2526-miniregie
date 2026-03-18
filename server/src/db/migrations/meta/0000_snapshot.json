@@ -1,7 +1,7 @@
 {
   "version": "6",
   "dialect": "sqlite",
-  "id": "b158ba1d-2ff2-4957-9865-373757923e3c",
+  "id": "06707a15-7d5a-4a96-9ccb-9cbc0a596027",
   "prevId": "00000000-0000-0000-0000-000000000000",
   "tables": {
     "broadcast_events": {
@@ -199,22 +199,15 @@
           "notNull": true,
           "autoincrement": false
         },
-        "oauth_id": {
-          "name": "oauth_id",
+        "username": {
+          "name": "username",
           "type": "text",
           "primaryKey": false,
           "notNull": false,
           "autoincrement": false
         },
-        "oauth_provider": {
-          "name": "oauth_provider",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        },
-        "email": {
-          "name": "email",
+        "password_hash": {
+          "name": "password_hash",
           "type": "text",
           "primaryKey": false,
           "notNull": false,
@@ -288,17 +281,10 @@
         }
       },
       "indexes": {
-        "participants_oauth_id_unique": {
-          "name": "participants_oauth_id_unique",
+        "participants_username_unique": {
+          "name": "participants_username_unique",
           "columns": [
-            "oauth_id"
-          ],
-          "isUnique": true
-        },
-        "participants_email_unique": {
-          "name": "participants_email_unique",
-          "columns": [
-            "email"
+            "username"
           ],
           "isUnique": true
         }
