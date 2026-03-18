@@ -76,6 +76,10 @@ export const api = {
         body: JSON.stringify({ resumeAppId }),
       });
     },
+
+    reset(): Promise<{ ok: boolean }> {
+      return request('/api/jam/reset', { method: 'POST' });
+    },
   },
 
   items: {

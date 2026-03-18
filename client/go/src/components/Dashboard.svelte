@@ -1,6 +1,6 @@
 <script lang="ts">
   import { api, isApiError } from '../lib/api.js';
-  import { participantState } from '../lib/stores.js';
+  import { participantState } from '../lib/stores.svelte.js';
   import SubmitForm from './SubmitForm.svelte';
   import MyItems from './MyItems.svelte';
   import type { Participant, MediaItem } from '@shared/types.js';

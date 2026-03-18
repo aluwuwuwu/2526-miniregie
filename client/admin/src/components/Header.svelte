@@ -18,6 +18,12 @@
   const poolFresh = $derived(socketState.globalState?.pool.fresh ?? 0);
   const connected = $derived(socketState.connected);
 
+  // In dev, admin runs on Vite port 3001 — broadcast is on the Express server (port 3000).
+  // In prod, both are on the same origin so we just use '/'.
+  // The socket proxy target tells us the Express server origin.
+  const broadcastUrl = import.meta.env.DEV ? 'http://localhost:3000/' : '/';
+  const goUrl        = import.meta.env.DEV ? 'http://localhost:3000/go' : '/go';
+
   // Format ms as HH:MM:SS
   function formatTime(ms: number | null): string {
     if (ms === null || ms <= 0) return '—';
@@ -71,6 +77,14 @@
     <span class="user-info" title={me.role}>
       {me.displayName}
     </span>
+
+    <a class="btn btn-ghost btn-sm" href="{goUrl}" target="_blank" rel="noopener" title="Ouvrir le client participant">
+      /go ↗
+    </a>
+
+    <a class="btn btn-ghost btn-sm" href="{broadcastUrl}" target="_blank" rel="noopener" title="Ouvrir le broadcast">
+      Broadcast ↗
+    </a>
 
     <button class="btn btn-ghost btn-sm" onclick={handleLogout}>
       Déconnexion

@@ -5,8 +5,8 @@ import { Server } from 'socket.io';
 // Import DB to trigger migrations and seed on startup (side effects)
 import './db/index.js';
 
-import { PoolManager } from './pool/index.js';
-import { BroadcastManager } from './broadcast/index.js';
+import { PoolManager } from "./pool";
+import { BroadcastManager } from "./broadcast";
 
 import authRouter        from './routes/auth.js';
 import createApiRouter   from './routes/api.js';
@@ -40,9 +40,9 @@ broadcastRef = broadcast;
 
 const UPLOAD_DIR = process.env['UPLOAD_DIR'] ?? './uploads';
 app.use('/uploads', express.static(UPLOAD_DIR));
-app.use('/admin',   express.static('../client/admin/dist'));
-app.use('/go',      express.static('../client/go/dist'));
-app.use('/',        express.static('../client/broadcast/dist'));
+app.use('/admin',   express.static('client/admin/dist'));
+app.use('/go',      express.static('client/go/dist'));
+app.use('/',        express.static('client/broadcast/dist'));
 
 // ─── Routes ───────────────────────────────────────────────────────────────────
 

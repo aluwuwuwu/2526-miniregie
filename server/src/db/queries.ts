@@ -293,6 +293,17 @@ export function searchParticipants(query?: string): Participant[] {
   return rows.map(rowToParticipant);
 }
 
+// ─── reset ────────────────────────────────────────────────────────────────────
+
+/**
+ * Deletes all media data for a full JAM reset.
+ * Participants and broadcast_events are preserved.
+ */
+export function resetAllMedia(): void {
+  db.delete(mediaEvents).run();
+  db.delete(mediaItems).run();
+}
+
 // ─── broadcast_events ─────────────────────────────────────────────────────────
 
 export function insertBroadcastEvent(event: BroadcastEvent): void {

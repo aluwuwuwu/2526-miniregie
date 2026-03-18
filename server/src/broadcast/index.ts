@@ -4,7 +4,7 @@ import { randomUUID } from 'node:crypto';
 import type { Server, Socket } from 'socket.io';
 import { shouldFire, parseScheduleEntry } from './triggers.js';
 import { validateJamTransition } from './jam-state.js';
-import { insertBroadcastEvent } from '../db/queries.js';
+import { insertBroadcastEvent, resetAllMedia } from '../db/queries.js';
 import type { GlobalState, LimitTrigger, MarketTrigger, AppId, JamStatus } from '../../../shared/types.js';
 import type { PoolManager } from '../pool/index.js';
 
@@ -107,6 +107,35 @@ export class BroadcastManager {
     this.state.broadcast.panicState = false;
     this.logEvent('panic_cleared', { resumedApp: resumeAppId });
     this.dispatch({ type: 'market', appId: resumeAppId, source: 'admin' });
+  }
+
+  reset(): void {
+    // Clear all media from DB
+    resetAllMedia();
+
+    // Reset in-memory pool state
+    this.pool.reset();
+
+    // Reset JAM state machine
+    this.state.jam       = { status: 'idle', startedAt: null, endsAt: null, timeRemaining: null };
+    this.state.broadcast = { activeApp: 'pre-jam-idle', transition: 'idle', panicState: false };
+
+    // Unfire all schedule triggers so they can fire again
+    for (const trigger of this.schedule) {
+      trigger.fired = false;
+    }
+
+    // Clear any pending transition
+    this.isTransitioning = false;
+    this.triggerQueue    = [];
+    if (this.pendingTransitionResolve) {
+      this.pendingTransitionResolve();
+      this.pendingTransitionResolve = null;
+    }
+
+    this.logEvent('jam_state_change', { from: 'reset', to: 'idle' });
+    this.persist();
+    this.emitState();
   }
 
   destroy(): void {

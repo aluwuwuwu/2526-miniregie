@@ -67,6 +67,11 @@
     doAction('resume', () => api.jam.clearPanic(resumeAppId));
   }
 
+  function handleReset(): void {
+    if (!confirm('Reset total : toutes les soumissions seront supprimées et la JAM repassera en idle. Continuer ?')) return;
+    doAction('reset', () => api.jam.reset());
+  }
+
   // Default endsAtInput to 48h from now when component mounts
   $effect(() => {
     if (!endsAtInput) {
@@ -109,6 +114,18 @@
       disabled={loading !== null}
     >
       {loading === 'end' ? '…' : 'Terminer la JAM'}
+    </button>
+  {/if}
+
+  <!-- Reset (only when ended) -->
+  {#if isEnded && !panicState}
+    <button
+      class="btn btn-ghost btn-reset"
+      onclick={handleReset}
+      disabled={loading !== null}
+      title="Reset total : remet la JAM en idle et vide toutes les soumissions"
+    >
+      {loading === 'reset' ? '…' : '↺ Reset JAM'}
     </button>
   {/if}
 
@@ -172,6 +189,11 @@
   .resume-select {
     font-size: 12px;
     padding: 5px 8px;
+  }
+
+  .btn-reset {
+    border-color: var(--border);
+    opacity: 0.8;
   }
 
   .btn-panic {

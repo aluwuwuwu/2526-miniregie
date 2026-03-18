@@ -36,6 +36,11 @@ export default function createApiRouter(broadcast: BroadcastManager): Router {
     res.json({ ok: true });
   });
 
+  router.post("/jam/reset", (_req, res) => {
+    broadcast.reset();
+    res.json({ ok: true });
+  });
+
   router.post("/jam/panic", (_req, res) => {
     broadcast.panic("manual");
     res.json({ ok: true });

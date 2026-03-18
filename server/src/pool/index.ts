@@ -296,6 +296,13 @@ export class PoolManager extends EventEmitter {
     this.emit('update');
   }
 
+  // ─── Reset ──────────────────────────────────────────────────────────────────
+
+  reset(): void {
+    this.recentDisplayedAuthors.clear();
+    this.emit('update');
+  }
+
   // ─── Helpers ────────────────────────────────────────────────────────────────
 
   private computeAuthorReadyCounts(rows: ScoredRow[]): Map<string, number> {

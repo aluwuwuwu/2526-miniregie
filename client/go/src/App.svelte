@@ -1,6 +1,6 @@
 <script lang="ts">
   import { api, isApiError } from './lib/api.js';
-  import { participantState } from './lib/stores.js';
+  import { participantState } from './lib/stores.svelte.js';
   import Login from './components/Login.svelte';
   import Onboarding from './components/Onboarding.svelte';
   import Dashboard from './components/Dashboard.svelte';

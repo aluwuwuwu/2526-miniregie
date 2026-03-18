@@ -1,6 +1,6 @@
 <script lang="ts">
   import { api, isApiError } from '../lib/api.js';
-  import { participantState } from '../lib/stores.js';
+  import { participantState } from '../lib/stores.svelte.js';
   import type { Participant } from '@shared/types.js';
 
   // ─── Props ────────────────────────────────────────────────────────────────
