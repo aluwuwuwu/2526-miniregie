@@ -12,12 +12,26 @@ function formatMs(ms: number): string {
 
 export function createCountdownToJam(): BroadcastApp {
   let displayEl: HTMLElement | null = null;
-  let tickHandler: ((payload: { timeRemaining: number | null }) => void) | null = null;
+  let nextTriggerAt: number | null = null;
+  let intervalId: ReturnType<typeof setInterval> | null = null;
+  let stateHandler: ((s: GlobalState) => void) | null = null;
   let boundSocket: Socket | null = null;
+
+  function tick(): void {
+    if (displayEl === null) return;
+    if (nextTriggerAt === null) {
+      displayEl.textContent = '--:--:--';
+      return;
+    }
+    const remaining = nextTriggerAt - Date.now();
+    displayEl.textContent = formatMs(remaining > 0 ? remaining : 0);
+  }
 
   return {
     mount(container: HTMLElement, state: GlobalState, socket: Socket): void {
       container.className = 'app app--countdown-to-jam';
+
+      nextTriggerAt = state.broadcast.nextTriggerAt;
 
       const el = document.createElement('div');
       el.className = 'countdown-to-jam';
@@ -28,32 +42,31 @@ export function createCountdownToJam(): BroadcastApp {
 
       const display = document.createElement('p');
       display.className = 'countdown-to-jam__display';
-      display.textContent = state.jam.timeRemaining !== null
-        ? formatMs(state.jam.timeRemaining)
-        : '--:--:--';
-
       displayEl = display;
 
       el.appendChild(label);
       el.appendChild(display);
       container.appendChild(el);
 
-      tickHandler = ({ timeRemaining }) => {
-        if (displayEl !== null && timeRemaining !== null) {
-          displayEl.textContent = formatMs(timeRemaining);
-        }
-      };
+      tick();
+      intervalId = setInterval(tick, 1_000);
 
+      // Keep nextTriggerAt in sync if schedule fires while mounted
+      stateHandler = (s: GlobalState) => {
+        nextTriggerAt = s.broadcast.nextTriggerAt;
+      };
       boundSocket = socket;
-      socket.on('tick', tickHandler);
+      socket.on('state', stateHandler);
     },
 
     unmount(): void {
-      if (boundSocket !== null && tickHandler !== null) {
-        boundSocket.off('tick', tickHandler);
+      if (intervalId !== null) clearInterval(intervalId);
+      if (boundSocket !== null && stateHandler !== null) {
+        boundSocket.off('state', stateHandler);
       }
       displayEl = null;
-      tickHandler = null;
+      intervalId = null;
+      stateHandler = null;
       boundSocket = null;
     },
   };

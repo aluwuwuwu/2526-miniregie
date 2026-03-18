@@ -1,0 +1,22 @@
+{
+  "_note": "JAM configuration — update before each event. Durations in milliseconds.",
+  "jam": {
+    "startAt": "2026-03-18T10:00:00.000Z",
+    "endsAt": "2026-03-22T15:00:00.000Z",
+    "countdownDurationMs": 600000
+  },
+  "broadcast": {
+    "transitionFailsafeMs": 3000,
+    "statePersistIntervalMs": 30000,
+    "postJamIdleDelayMs": 300000
+  },
+  "pool": {
+    "itemCooldownMs": 300000,
+    "authorDisplayCooldownMs": 180000,
+    "clipQuotaPerParticipant": 3,
+    "freshItemWindowMs": 900000
+  },
+  "client": {
+    "watchdogTimeoutMs": 30000
+  }
+}

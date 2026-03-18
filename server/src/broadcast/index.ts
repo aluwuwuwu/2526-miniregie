@@ -7,6 +7,7 @@ import { validateJamTransition } from './jam-state.js';
 import { insertBroadcastEvent, resetAllMedia } from '../db/queries.js';
 import type { GlobalState, LimitTrigger, MarketTrigger, AppId, JamStatus } from '../../../shared/types.js';
 import type { PoolManager } from '../pool/index.js';
+import { getJamConfig } from '../jam-config.js';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -22,10 +23,8 @@ interface PersistedState {
   schedule:  LimitTrigger[];
 }
 
-const STATE_FILE        = 'state.json';
-const TICK_MS           = 1_000;
-const PERSIST_MS        = 30_000;
-const TRANSITION_ACK_MS = 3_000;
+const STATE_FILE = 'state.json';
+const TICK_MS    = 1_000;
 
 // ─── BroadcastManager ─────────────────────────────────────────────────────────
 
@@ -44,9 +43,12 @@ export class BroadcastManager {
   private triggerQueue:                MarketTrigger[] = [];
   private pendingTransitionResolve:    (() => void) | null = null;
 
+  private readonly cfg: ReturnType<typeof getJamConfig>['broadcast'];
+
   constructor(options: { io: Server; pool: PoolManager; scheduleFile: string }) {
-    this.io   = options.io;
+    this.io  = options.io;
     this.pool = options.pool;
+    this.cfg  = getJamConfig().broadcast;
 
     this.schedule = this.loadSchedule(options.scheduleFile);
     this.state    = this.loadOrInitState();
@@ -71,7 +73,38 @@ export class BroadcastManager {
     return this.state;
   }
 
-  startJam(endsAt: number): void {
+  getSchedule(): ReadonlyArray<LimitTrigger> {
+    return this.schedule;
+  }
+
+  // Compute the absolute timestamp of the next unfired schedule trigger.
+  private computeNextTriggerAt(): number | null {
+    const jam = this.state.jam;
+    let earliest: number | null = null;
+
+    for (const trigger of this.schedule) {
+      if (trigger.fired) continue;
+
+      let absTime: number | null = null;
+      const c = trigger.condition;
+
+      if (c.at === 'absolute') {
+        absTime = new Date(c.value).getTime();
+      } else if (c.at === 'H+' && jam.startedAt !== null) {
+        absTime = jam.startedAt + c.value;
+      } else if (c.at === 'T-' && jam.endsAt !== null) {
+        absTime = jam.endsAt - c.value;
+      }
+
+      if (absTime !== null && (earliest === null || absTime < earliest)) {
+        earliest = absTime;
+      }
+    }
+
+    return earliest;
+  }
+
+  startJam(endsAt = new Date(getJamConfig().jam.endsAt).getTime()): void {
     const result = validateJamTransition(this.state.jam.status, 'running');
     if (!result.ok) {
       console.warn(`[broadcast] JAM_START rejected: ${result.error}`);
@@ -94,6 +127,9 @@ export class BroadcastManager {
     this.logEvent('jam_state_change', { from: prev, to: 'ended' });
     this.emitState();
     this.dispatch({ type: 'market', appId: 'end-of-countdown', source: 'system' });
+    setTimeout(() => {
+      this.dispatch({ type: 'market', appId: 'post-jam-idle', source: 'system' });
+    }, this.cfg.postJamIdleDelayMs);
   }
 
   panic(reason: 'app_error' | 'manual', appId?: string): void {
@@ -118,7 +154,7 @@ export class BroadcastManager {
 
     // Reset JAM state machine
     this.state.jam       = { status: 'idle', startedAt: null, endsAt: null, timeRemaining: null };
-    this.state.broadcast = { activeApp: 'pre-jam-idle', transition: 'idle', panicState: false };
+    this.state.broadcast = { activeApp: 'pre-jam-idle', transition: 'idle', panicState: false, nextTriggerAt: null };
 
     // Unfire all schedule triggers so they can fire again
     for (const trigger of this.schedule) {
@@ -184,9 +220,9 @@ export class BroadcastManager {
     return new Promise<void>(resolve => {
       const timeout = setTimeout(() => {
         this.pendingTransitionResolve = null;
-        this.logEvent('lifecycle_timeout', { method: 'transition', timeout_ms: TRANSITION_ACK_MS });
+        this.logEvent('lifecycle_timeout', { method: 'transition', timeout_ms: this.cfg.transitionFailsafeMs });
         resolve();
-      }, TRANSITION_ACK_MS);
+      }, this.cfg.transitionFailsafeMs);
 
       this.pendingTransitionResolve = () => {
         clearTimeout(timeout);
@@ -253,6 +289,7 @@ export class BroadcastManager {
 
   private emitState(): void {
     this.state.pool = this.pool.getStats();
+    this.state.broadcast.nextTriggerAt = this.computeNextTriggerAt();
     this.io.emit('state', this.state);
   }
 
@@ -277,7 +314,7 @@ export class BroadcastManager {
 
         return {
           jam:       persisted.jam,
-          broadcast: { activeApp: persisted.activeApp, transition: 'idle', panicState: false },
+          broadcast: { activeApp: persisted.activeApp, transition: 'idle', panicState: false, nextTriggerAt: null },
           pool:      { total: 0, fresh: 0, queueSnapshot: [] },
         };
       }
@@ -287,7 +324,7 @@ export class BroadcastManager {
 
     return {
       jam:       { status: 'idle', startedAt: null, endsAt: null, timeRemaining: null },
-      broadcast: { activeApp: 'pre-jam-idle', transition: 'idle', panicState: false },
+      broadcast: { activeApp: 'pre-jam-idle', transition: 'idle', panicState: false, nextTriggerAt: null },
       pool:      { total: 0, fresh: 0, queueSnapshot: [] },
     };
   }
@@ -344,6 +381,6 @@ export class BroadcastManager {
   }
 
   private startPersist(): void {
-    this.persistInterval = setInterval(() => this.persist(), PERSIST_MS);
+    this.persistInterval = setInterval(() => this.persist(), this.cfg.statePersistIntervalMs);
   }
 }

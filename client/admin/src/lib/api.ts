@@ -1,4 +1,4 @@
-import type { MediaStatus, AppId, Participant, MediaItem, GlobalState } from '@shared/types';
+import type { MediaStatus, AppId, Participant, MediaItem, GlobalState, LimitTrigger, JamConfig } from '@shared/types';
 
 // ─── Error type ───────────────────────────────────────────────────────────────
 
@@ -54,11 +54,20 @@ export const api = {
     },
   },
 
+  config: {
+    get(): Promise<JamConfig> {
+      return request('/api/config');
+    },
+    update(patch: Partial<JamConfig>): Promise<JamConfig> {
+      return request('/api/config', { method: 'PATCH', body: JSON.stringify(patch) });
+    },
+  },
+
   jam: {
-    start(endsAt: number): Promise<{ ok: boolean }> {
+    start(endsAt?: number): Promise<{ ok: boolean }> {
       return request('/api/jam/start', {
         method: 'POST',
-        body: JSON.stringify({ endsAt }),
+        body: JSON.stringify(endsAt !== undefined ? { endsAt } : {}),
       });
     },
 
@@ -79,36 +88,6 @@ export const api = {
 
     reset(): Promise<{ ok: boolean }> {
       return request('/api/jam/reset', { method: 'POST' });
-    },
-  },
-
-  items: {
-    list(filters?: { status?: MediaStatus; authorId?: string }): Promise<MediaItem[]> {
-      const params = new URLSearchParams();
-      if (filters?.status) params.set('status', filters.status);
-      if (filters?.authorId) params.set('authorId', filters.authorId);
-      const qs = params.toString();
-      return request(`/api/items${qs ? `?${qs}` : ''}`);
-    },
-
-    updateStatus(id: string, status: MediaStatus): Promise<{ ok: boolean }> {
-      return request(`/api/items/${encodeURIComponent(id)}/status`, {
-        method: 'PATCH',
-        body: JSON.stringify({ status }),
-      });
-    },
-
-    updatePin(id: string, pinned: boolean): Promise<{ ok: boolean }> {
-      return request(`/api/items/${encodeURIComponent(id)}/pin`, {
-        method: 'PATCH',
-        body: JSON.stringify({ pinned }),
-      });
-    },
-
-    delete(id: string): Promise<{ ok: boolean }> {
-      return request(`/api/items/${encodeURIComponent(id)}`, {
-        method: 'DELETE',
-      });
     },
   },
 
@@ -137,6 +116,56 @@ export const api = {
   state: {
     get(): Promise<GlobalState> {
       return request('/api/state');
+    },
+  },
+
+  broadcast: {
+    dispatch(appId: AppId): Promise<{ ok: boolean }> {
+      return request('/api/broadcast/dispatch', {
+        method: 'POST',
+        body: JSON.stringify({ appId }),
+      });
+    },
+
+    schedule(): Promise<LimitTrigger[]> {
+      return request('/api/broadcast/schedule');
+    },
+  },
+
+  items: {
+    list(filters?: { status?: MediaStatus; authorId?: string }): Promise<MediaItem[]> {
+      const params = new URLSearchParams();
+      if (filters?.status) params.set('status', filters.status);
+      if (filters?.authorId) params.set('authorId', filters.authorId);
+      const qs = params.toString();
+      return request(`/api/items${qs ? `?${qs}` : ''}`);
+    },
+
+    create(payload: { type: 'note' | 'ticker'; text: string; label?: string; pinned?: boolean }): Promise<MediaItem> {
+      return request('/api/items/create', {
+        method: 'POST',
+        body: JSON.stringify(payload),
+      });
+    },
+
+    updateStatus(id: string, status: MediaStatus): Promise<{ ok: boolean }> {
+      return request(`/api/items/${encodeURIComponent(id)}/status`, {
+        method: 'PATCH',
+        body: JSON.stringify({ status }),
+      });
+    },
+
+    updatePin(id: string, pinned: boolean): Promise<{ ok: boolean }> {
+      return request(`/api/items/${encodeURIComponent(id)}/pin`, {
+        method: 'PATCH',
+        body: JSON.stringify({ pinned }),
+      });
+    },
+
+    delete(id: string): Promise<{ ok: boolean }> {
+      return request(`/api/items/${encodeURIComponent(id)}`, {
+        method: 'DELETE',
+      });
     },
   },
 };

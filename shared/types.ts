@@ -96,9 +96,10 @@ export interface GlobalState {
     timeRemaining: number | null;
   };
   broadcast: {
-    activeApp: AppId;
-    transition: 'idle' | 'in_progress';
-    panicState: boolean;
+    activeApp:     AppId;
+    transition:    'idle' | 'in_progress';
+    panicState:    boolean;
+    nextTriggerAt: number | null; // absolute ms of next unfired schedule trigger
   };
   pool: {
     total: number;
@@ -155,4 +156,28 @@ export interface BroadcastEvent {
   type: BroadcastEventType;
   payload: Record<string, unknown> | null;
   createdAt: number;
+}
+
+// ─── JAM config (config/jam.json) ─────────────────────────────────────────────
+
+export interface JamConfig {
+  jam: {
+    startAt:             string; // ISO 8601 — informational, JAM_START is a manual admin action
+    endsAt:              string; // ISO 8601 — used by startJam()
+    countdownDurationMs: number; // ms — visual countdown timer duration in countdown-to-jam app
+  };
+  broadcast: {
+    transitionFailsafeMs:   number; // ms — max wait for client ack before forcing transition
+    statePersistIntervalMs: number; // ms — interval between state.json writes
+    postJamIdleDelayMs:     number; // ms — delay after JAM end before switching to post-jam-idle
+  };
+  pool: {
+    itemCooldownMs:          number; // ms — before a displayed item can be shown again
+    authorDisplayCooldownMs: number; // ms — before the same author's item can be shown again
+    clipQuotaPerParticipant: number; // max clips per participant per JAM
+    freshItemWindowMs:       number; // ms — items submitted within this window are counted as "fresh"
+  };
+  client: {
+    watchdogTimeoutMs: number; // ms — without server ping before broadcast client reloads
+  };
 }

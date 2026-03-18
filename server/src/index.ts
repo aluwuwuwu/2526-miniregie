@@ -47,7 +47,7 @@ app.use('/',        express.static('client/broadcast/dist'));
 // ─── Routes ───────────────────────────────────────────────────────────────────
 
 app.use('/auth',   authRouter);
-app.use('/api',    createApiRouter(broadcast));
+app.use('/api',    createApiRouter(broadcast, pool));
 // Mount participant API at /go/api so it doesn't conflict with the static /go SPA
 app.use('/go/api', createGoRouter(broadcast, pool));
 

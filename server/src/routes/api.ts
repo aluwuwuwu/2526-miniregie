@@ -1,4 +1,5 @@
 import { Router } from "express";
+import { randomUUID } from "node:crypto";
 import { requireAuth, requireRole } from "../middleware/auth.js";
 import {
   getAllItems,
@@ -8,12 +9,20 @@ import {
   searchParticipants,
   setBanned,
 } from "../db/queries.js";
-import type { MediaStatus, AppId } from "../../../shared/types.js";
+import type { MediaStatus, AppId, MediaItem, JamConfig } from "../../../shared/types.js";
 import type { BroadcastManager } from "../broadcast/index.js";
+import type { PoolManager } from "../pool/index.js";
+import { getJamConfig, updateJamConfig } from "../jam-config.js";
 
 const VALID_STATUSES: MediaStatus[] = ["pending", "ready", "evicted"];
+const ADMIN_AUTHOR: MediaItem["author"] = {
+  participantId: "system:admin",
+  displayName: "Admin",
+  team: "",
+  role: "admin",
+};
 
-export default function createApiRouter(broadcast: BroadcastManager): Router {
+export default function createApiRouter(broadcast: BroadcastManager, pool: PoolManager): Router {
   const router = Router();
 
   // All API routes require admin role
@@ -23,11 +32,16 @@ export default function createApiRouter(broadcast: BroadcastManager): Router {
 
   router.post("/jam/start", (req, res) => {
     const { endsAt } = req.body as { endsAt?: unknown };
-    if (typeof endsAt !== "number" || endsAt <= Date.now()) {
-      res.status(400).json({ error: "endsAt must be a future timestamp (ms)" });
-      return;
+    // If endsAt provided, validate it; otherwise use config default
+    if (endsAt !== undefined) {
+      if (typeof endsAt !== "number" || endsAt <= Date.now()) {
+        res.status(400).json({ error: "endsAt must be a future timestamp (ms)" });
+        return;
+      }
+      broadcast.startJam(endsAt);
+    } else {
+      broadcast.startJam(); // uses config/jam.json endsAt
     }
-    broadcast.startJam(endsAt);
     res.json({ ok: true });
   });
 
@@ -56,6 +70,38 @@ export default function createApiRouter(broadcast: BroadcastManager): Router {
     res.json({ ok: true });
   });
 
+  // ─── Config ───────────────────────────────────────────────────────────────────
+
+  router.get("/config", (_req, res) => {
+    res.json(getJamConfig());
+  });
+
+  router.patch("/config", (req, res) => {
+    try {
+      const patch = req.body as Partial<JamConfig>;
+      const updated = updateJamConfig(patch);
+      res.json(updated);
+    } catch (err) {
+      res.status(400).json({ error: String(err) });
+    }
+  });
+
+  // ─── Broadcast ────────────────────────────────────────────────────────────────
+
+  router.post("/broadcast/dispatch", (req, res) => {
+    const { appId } = req.body as { appId?: unknown };
+    if (typeof appId !== "string" || appId.trim().length === 0) {
+      res.status(400).json({ error: "appId is required" });
+      return;
+    }
+    broadcast.dispatch({ type: "market", appId: appId.trim() as AppId, source: "admin" });
+    res.json({ ok: true });
+  });
+
+  router.get("/broadcast/schedule", (_req, res) => {
+    res.json(broadcast.getSchedule());
+  });
+
   // ─── State ────────────────────────────────────────────────────────────────────
 
   router.get("/state", (_req, res) => {
@@ -63,6 +109,46 @@ export default function createApiRouter(broadcast: BroadcastManager): Router {
   });
 
   // ─── Items ────────────────────────────────────────────────────────────────────
+
+  router.post("/items/create", (req, res) => {
+    const { type, text, label, pinned } = req.body as {
+      type?: unknown;
+      text?: unknown;
+      label?: unknown;
+      pinned?: unknown;
+    };
+
+    if (type !== "note" && type !== "ticker") {
+      res.status(400).json({ error: "type must be note or ticker" });
+      return;
+    }
+    if (typeof text !== "string" || text.trim().length === 0) {
+      res.status(400).json({ error: "text is required" });
+      return;
+    }
+    if (text.trim().length > 280) {
+      res.status(400).json({ error: "text must be 280 characters or fewer" });
+      return;
+    }
+
+    const item: MediaItem = {
+      id:          randomUUID(),
+      type,
+      content:     type === "ticker"
+        ? { text: text.trim(), ...(typeof label === "string" && label.trim() ? { label: label.trim() } : {}) }
+        : { text: text.trim() },
+      priority:    type === "ticker" ? 80 : 100,
+      status:      "ready",
+      pinned:      false,
+      submittedAt: Date.now(),
+      author:      ADMIN_AUTHOR,
+    };
+
+    pool.addDirectItem(item);
+    if (pinned === true) pool.pin(item.id);
+
+    res.status(201).json(item);
+  });
 
   router.get("/items", (req, res) => {
     const { status, authorId } = req.query as {

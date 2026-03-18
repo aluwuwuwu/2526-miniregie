@@ -1,26 +1,19 @@
 <script lang="ts">
+  import { PaneGroup, Pane, PaneResizer } from 'paneforge';
   import { api } from './lib/api.ts';
   import type { Participant } from '@shared/types';
-  import Login from './components/Login.svelte';
-  import Header from './components/Header.svelte';
-  import ItemsPanel from './components/ItemsPanel.svelte';
-  import ParticipantsPanel from './components/ParticipantsPanel.svelte';
-  import StatePanel from './components/StatePanel.svelte';
-
-  // ─── Auth state ──────────────────────────────────────────────────────────────
+  import Login          from './components/Login.svelte';
+  import TopBar         from './components/TopBar.svelte';
+  import SourcePanel    from './components/SourcePanel.svelte';
+  import ProgramMonitor from './components/ProgramMonitor.svelte';
+  import InspectorPanel from './components/InspectorPanel.svelte';
+  import EditTimeline   from './components/EditTimeline.svelte';
 
   type View = 'loading' | 'login' | 'dashboard';
 
-  let view = $state<View>('loading');
-  let me = $state<Participant | null>(null);
+  let view      = $state<View>('loading');
+  let me        = $state<Participant | null>(null);
   let authError = $state<string | null>(null);
-
-  // ─── Tab state ────────────────────────────────────────────────────────────────
-
-  type Tab = 'items' | 'participants' | 'state';
-  let activeTab = $state<Tab>('items');
-
-  // ─── Check auth on mount ─────────────────────────────────────────────────────
 
   $effect(() => {
     api.auth
@@ -30,74 +23,64 @@
           authError = 'Accès réservé aux admins.';
           view = 'login';
         } else {
-          me = participant;
+          me   = participant;
           view = 'dashboard';
         }
       })
-      .catch(() => {
-        view = 'login';
-      });
+      .catch(() => { view = 'login'; });
   });
 
-  // ─── Handlers ────────────────────────────────────────────────────────────────
-
   function handleLogin(participant: Participant): void {
-    me = participant;
+    me        = participant;
     authError = null;
-    view = 'dashboard';
+    view      = 'dashboard';
   }
 
   function handleLogout(): void {
-    me = null;
+    me   = null;
     view = 'login';
   }
 </script>
 
 {#if view === 'loading'}
   <div class="full-center">
-    <div class="loading">Vérification de la session…</div>
+    <span class="loading-text">Vérification de la session…</span>
   </div>
 
 {:else if view === 'login'}
   <Login {authError} onLogin={handleLogin} />
 
 {:else if view === 'dashboard' && me}
-  <div class="dashboard">
-    <Header {me} onLogout={handleLogout} />
+  <div class="workspace">
+    <TopBar {me} onLogout={handleLogout} />
 
-    <nav class="tabs">
-      <button
-        class="tab-btn"
-        class:active={activeTab === 'items'}
-        onclick={() => { activeTab = 'items'; }}
-      >
-        Items
-      </button>
-      <button
-        class="tab-btn"
-        class:active={activeTab === 'participants'}
-        onclick={() => { activeTab = 'participants'; }}
-      >
-        Participants
-      </button>
-      <button
-        class="tab-btn"
-        class:active={activeTab === 'state'}
-        onclick={() => { activeTab = 'state'; }}
-      >
-        État
-      </button>
-    </nav>
+    <div class="body">
+      <PaneGroup direction="vertical" class="pane-group-v">
+        <!-- Main row: Source / Monitor / Inspector -->
+        <Pane defaultSize={78} minSize={50} class="pane-main-row">
+          <PaneGroup direction="horizontal" class="pane-group-h">
+            <Pane defaultSize={22} minSize={14} class="pane-cell">
+              <SourcePanel />
+            </Pane>
+            <PaneResizer class="resizer resizer-v" />
+            <Pane defaultSize={44} minSize={30} class="pane-cell">
+              <ProgramMonitor />
+            </Pane>
+            <PaneResizer class="resizer resizer-v" />
+            <Pane defaultSize={34} minSize={18} class="pane-cell">
+              <InspectorPanel />
+            </Pane>
+          </PaneGroup>
+        </Pane>
 
-    <main class="tab-content">
-      {#if activeTab === 'items'}
-        <ItemsPanel />
-      {:else if activeTab === 'participants'}
-        <ParticipantsPanel />
-      {:else}
-        <StatePanel />
-      {/if}
-    </main>
+        <PaneResizer class="resizer resizer-h" />
+
+        <!-- Bottom: timeline -->
+        <Pane defaultSize={22} minSize={12} class="pane-cell">
+          <EditTimeline />
+        </Pane>
+      </PaneGroup>
+    </div>
   </div>
 {/if}
 
@@ -107,49 +90,63 @@
     align-items: center;
     justify-content: center;
     height: 100vh;
+    background: var(--bg);
   }
 
-  .dashboard {
+  .loading-text {
+    font-size: 13px;
+    color: var(--text-muted);
+  }
+
+  .workspace {
     display: flex;
     flex-direction: column;
     height: 100vh;
     overflow: hidden;
-  }
-
-  .tabs {
-    display: flex;
-    gap: 0;
-    border-bottom: 1px solid var(--border);
-    background: var(--bg-surface);
-    padding: 0 20px;
-  }
-
-  .tab-btn {
-    background: transparent;
-    color: var(--text-muted);
-    border: none;
-    border-radius: 0;
-    padding: 12px 20px;
-    font-size: 13px;
-    font-weight: 500;
-    border-bottom: 2px solid transparent;
-    transition: color 0.15s, border-color 0.15s;
-    margin-bottom: -1px;
-  }
-
-  .tab-btn:hover {
-    color: var(--text);
-    background: transparent;
-  }
-
-  .tab-btn.active {
-    color: var(--accent);
-    border-bottom-color: var(--accent);
-  }
-
-  .tab-content {
-    flex: 1;
-    overflow-y: auto;
     background: var(--bg);
+  }
+
+  .body {
+    flex: 1;
+    overflow: hidden;
+    min-height: 0;
+  }
+
+  :global(.pane-group-v),
+  :global(.pane-group-h) {
+    width: 100%;
+    height: 100%;
+  }
+
+  :global(.pane-main-row) {
+    min-height: 0;
+  }
+
+  :global(.pane-cell) {
+    overflow: hidden;
+    min-width: 0;
+    min-height: 0;
+  }
+
+  /* Resizer handles */
+  :global(.resizer) {
+    flex-shrink: 0;
+    background: var(--border-dim);
+    transition: background 0.15s;
+  }
+
+  :global(.resizer:hover),
+  :global(.resizer[data-active]) {
+    background: var(--accent);
+  }
+
+  :global(.resizer-v) {
+    width: 3px;
+    cursor: col-resize;
+  }
+
+  :global(.resizer-h) {
+    height: 3px;
+    cursor: row-resize;
   }
 </style>

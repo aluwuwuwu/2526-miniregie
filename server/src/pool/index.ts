@@ -10,10 +10,9 @@ import {
 } from '../db/queries.js';
 import type { GlobalState, MediaItem, MediaType } from '../../../shared/types.js';
 import type { RawInput, ValidatedInput } from './types.js';
+import { getJamConfig } from '../jam-config.js';
 
-const AUTHOR_DISPLAY_COOLDOWN_MS = 3 * 60_000; // 3 minutes
-const SAME_AUTHOR_PENALTY        = 30;
-const CLIP_QUOTA                 = 3;
+const SAME_AUTHOR_PENALTY = 30;
 
 // ─── Filter types ─────────────────────────────────────────────────────────────
 
@@ -42,12 +41,14 @@ export interface GetItemsFilters {
 
 export class PoolManager extends EventEmitter {
   private readonly getJamState: () => GlobalState['jam'];
+  private readonly cfg: ReturnType<typeof getJamConfig>['pool'];
   // authorId → timestamp of last display
   private recentDisplayedAuthors = new Map<string, number>();
 
   constructor(options: { getJamState: () => GlobalState['jam'] }) {
     super();
     this.getJamState = options.getJamState;
+    this.cfg = getJamConfig().pool;
   }
 
   // ─── Submission pipeline ────────────────────────────────────────────────────
@@ -60,7 +61,8 @@ export class PoolManager extends EventEmitter {
     // 2. Clip quota check (before guard to keep guard pure)
     if (raw.type === 'clip') {
       const count = getClipCount(participantId);
-      if (count >= CLIP_QUOTA) throw new Error(`Clip quota reached (max ${CLIP_QUOTA} per JAM)`);
+      const quota = this.cfg.clipQuotaPerParticipant;
+      if (count >= quota) throw new Error(`Clip quota reached (max ${quota} per JAM)`);
     }
 
     // 3. Guard — JAM status + rate limit
@@ -120,6 +122,15 @@ export class PoolManager extends EventEmitter {
     }
   }
 
+  // ─── Direct insert (admin / narrator bypass) ────────────────────────────────
+
+  // Inserts a fully-formed item directly, bypassing sanitize/guard.
+  // Use only for system:admin and system:narrator items.
+  addDirectItem(item: MediaItem): void {
+    insertItem(item);
+    this.emit('update');
+  }
+
   // Placeholder — actual resolution logic lives in routes/resolve.ts
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
   private async resolve(_itemId: string, _validated: unknown): Promise<MediaItem['content']> {
@@ -130,14 +141,13 @@ export class PoolManager extends EventEmitter {
 
   getStats(): GlobalState['pool'] {
     const now = Date.now();
-    const FRESH_WINDOW = 15 * 60_000;
     const rows = getReadyItems({ excludeTypes: ['ticker'] });
     const authorCounts = this.computeAuthorReadyCounts(rows);
 
     let freshCount = 0;
     const scored = rows
       .map(row => {
-        if (now - row.submittedAt < FRESH_WINDOW) freshCount++;
+        if (now - row.submittedAt < this.cfg.freshItemWindowMs) freshCount++;
         return {
           row,
           score: computeScore(row, {
@@ -172,16 +182,14 @@ export class PoolManager extends EventEmitter {
     // Active author cooldown
     const cooldownAuthors = new Set(
       [...this.recentDisplayedAuthors.entries()]
-        .filter(([, ts]) => now - ts < AUTHOR_DISPLAY_COOLDOWN_MS)
+        .filter(([, ts]) => now - ts < this.cfg.authorDisplayCooldownMs)
         .map(([id]) => id),
     );
 
-    const COOLDOWN_MS = 5 * 60_000;
-
     const candidates = rows
       .filter(row => {
-        // 5-min item cooldown
-        if (row.lastActivityAt && now - row.lastActivityAt < COOLDOWN_MS) return false;
+        // Item cooldown
+        if (row.lastActivityAt && now - row.lastActivityAt < this.cfg.itemCooldownMs) return false;
         // Author display cooldown — skip if queue has other options
         if (cooldownAuthors.has(row.author.participantId)) return false;
         // Explicit exclude
@@ -191,7 +199,7 @@ export class PoolManager extends EventEmitter {
 
     // If all candidates are filtered by author cooldown, relax it
     const pool = candidates.length > 0 ? candidates : rows.filter(row =>
-      !row.lastActivityAt || now - row.lastActivityAt >= COOLDOWN_MS,
+      !row.lastActivityAt || now - row.lastActivityAt >= this.cfg.itemCooldownMs,
     );
 
     if (pool.length === 0) return null;
@@ -227,8 +235,7 @@ export class PoolManager extends EventEmitter {
     let rows = getReadyItems(dbFilters);
 
     if (withCooldown) {
-      const COOLDOWN_MS = 5 * 60_000;
-      rows = rows.filter(row => !row.lastActivityAt || now - row.lastActivityAt >= COOLDOWN_MS);
+      rows = rows.filter(row => !row.lastActivityAt || now - row.lastActivityAt >= this.cfg.itemCooldownMs);
     }
 
     if (!scoring) {
