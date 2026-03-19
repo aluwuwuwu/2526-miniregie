@@ -1,12 +1,7 @@
 <script lang="ts">
   import { Tabs } from 'bits-ui';
-  import TickersTab from "./inspector/TickersTab.svelte";
-  import ScheduleTab from "./inspector/ScheduleTab.svelte";
-  import SettingsTab from "./inspector/SettingsTab.svelte";
-  import ScoringTab from "./inspector/ScoringTab.svelte";
-  import PanicTab from "./inspector/PanicTab.svelte";
-  import PoolHealthTab from "./inspector/PoolHealthTab.svelte";
-  import AuthorsTab from "./inspector/AuthorsTab.svelte";
+  import PanicTab    from './inspector/PanicTab.svelte';
+  import SettingsTab from './inspector/SettingsTab.svelte';
 </script>
 
 <div class="inspector">
@@ -14,24 +9,14 @@
     <span class="panel-label">Inspecteur</span>
   </div>
 
-  <Tabs.Root value="tickers" class="tabs-root">
+  <Tabs.Root value="panic" class="tabs-root">
     <Tabs.List class="tabs-list">
-      <Tabs.Trigger value="tickers"  class="tab-trigger">Tickers</Tabs.Trigger>
-      <Tabs.Trigger value="schedule" class="tab-trigger">Schedule</Tabs.Trigger>
-      <Tabs.Trigger value="health"   class="tab-trigger">Health</Tabs.Trigger>
-      <Tabs.Trigger value="authors"  class="tab-trigger">Auteurs</Tabs.Trigger>
-      <Tabs.Trigger value="settings" class="tab-trigger">Params</Tabs.Trigger>
-      <Tabs.Trigger value="scoring"  class="tab-trigger">Scoring</Tabs.Trigger>
       <Tabs.Trigger value="panic"    class="tab-trigger panic-tab">Panic</Tabs.Trigger>
+      <Tabs.Trigger value="settings" class="tab-trigger">Paramètres</Tabs.Trigger>
     </Tabs.List>
 
-    <Tabs.Content value="tickers"  class="tab-content"><TickersTab    /></Tabs.Content>
-    <Tabs.Content value="schedule" class="tab-content"><ScheduleTab   /></Tabs.Content>
-    <Tabs.Content value="health"   class="tab-content"><PoolHealthTab /></Tabs.Content>
-    <Tabs.Content value="authors"  class="tab-content"><AuthorsTab    /></Tabs.Content>
-    <Tabs.Content value="settings" class="tab-content"><SettingsTab   /></Tabs.Content>
-    <Tabs.Content value="scoring"  class="tab-content"><ScoringTab    /></Tabs.Content>
-    <Tabs.Content value="panic"    class="tab-content"><PanicTab      /></Tabs.Content>
+    <Tabs.Content value="panic"    class="tab-content"><PanicTab    /></Tabs.Content>
+    <Tabs.Content value="settings" class="tab-content"><SettingsTab /></Tabs.Content>
   </Tabs.Root>
 </div>
 
@@ -73,10 +58,9 @@
     transition: color 0.15s, border-color 0.15s;
   }
 
-  :global(.tab-trigger:hover) { color: var(--text); background: var(--bg-hover); }
-  :global(.tab-trigger[data-state="active"]) { color: var(--accent); border-bottom-color: var(--accent); }
-  :global(.panic-tab) { color: var(--live) !important; opacity: 0.7; }
-  :global(.panic-tab[data-state="active"]) { border-bottom-color: var(--live) !important; opacity: 1; }
-
-  :global(.tab-content) { flex: 1; overflow-y: auto; }
+  :global(.tab-trigger:hover)                  { color: var(--text); background: var(--bg-hover); }
+  :global(.tab-trigger[data-state="active"])   { color: var(--accent); border-bottom-color: var(--accent); }
+  :global(.panic-tab)                          { color: var(--live) !important; opacity: 0.7; }
+  :global(.panic-tab[data-state="active"])     { border-bottom-color: var(--live) !important; opacity: 1; }
+  :global(.tab-content)                        { flex: 1; overflow-y: auto; }
 </style>
