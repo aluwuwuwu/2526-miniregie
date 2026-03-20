@@ -22,7 +22,6 @@ export const mediaItems = sqliteTable('media_items', {
   content:     text('content', { mode: 'json' }).notNull().$type<MediaContent>(),
   priority:    integer('priority').notNull(),
   status:      text('status').notNull().$type<MediaStatus>(),
-  pinned:      integer('pinned', { mode: 'boolean' }).notNull().default(false),
   submittedAt: integer('submitted_at').notNull(),
   authorId:    text('author_id').notNull().references(() => participants.id),
 });

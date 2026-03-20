@@ -25,7 +25,7 @@ vi.mock('../jam-config.js', () => ({
   getJamConfig: () => ({
     jam:       { startAt: '2026-03-01T09:00:00.000Z', endsAt: '2026-03-03T09:00:00.000Z', countdownDurationMs: 600_000 },
     broadcast: { transitionFailsafeMs: 3_000, statePersistIntervalMs: 30_000, postJamIdleDelayMs: 300_000 },
-    pool:      { itemCooldownMs: 300_000, authorDisplayCooldownMs: 120_000, clipQuotaPerParticipant: 3, freshItemWindowMs: 120_000 },
+    pool:      { clipQuotaPerParticipant: 3 },
     client:    { watchdogTimeoutMs: 30_000 },
   }),
 }));

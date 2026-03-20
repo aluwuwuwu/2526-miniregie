@@ -21,12 +21,7 @@ export function createEndOfCountdown(): BroadcastApp {
       totalEl.className = 'end-of-countdown__stat';
       totalEl.textContent = `${state.pool.total} soumissions au total`;
 
-      const freshEl = document.createElement('p');
-      freshEl.className = 'end-of-countdown__stat';
-      freshEl.textContent = `${state.pool.fresh} soumissions fraîches`;
-
       stats.appendChild(totalEl);
-      stats.appendChild(freshEl);
 
       el.appendChild(title);
       el.appendChild(stats);

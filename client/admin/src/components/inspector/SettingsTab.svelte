@@ -25,10 +25,7 @@
     transitionFailsafeSec: 3,
     statePersistSec:       30,
     postJamIdleMin:        5,
-    itemCooldownMin:       5,
-    authorCooldownMin:     3,
     clipQuota:             3,
-    freshWindowMin:        15,
     watchdogSec:           30,
   });
 
@@ -50,10 +47,7 @@
     form.transitionFailsafeSec = cfg.broadcast.transitionFailsafeMs / 1_000;
     form.statePersistSec       = cfg.broadcast.statePersistIntervalMs / 1_000;
     form.postJamIdleMin        = cfg.broadcast.postJamIdleDelayMs / 60_000;
-    form.itemCooldownMin       = cfg.pool.itemCooldownMs / 60_000;
-    form.authorCooldownMin     = cfg.pool.authorDisplayCooldownMs / 60_000;
     form.clipQuota             = cfg.pool.clipQuotaPerParticipant;
-    form.freshWindowMin        = cfg.pool.freshItemWindowMs / 60_000;
     form.watchdogSec           = cfg.client.watchdogTimeoutMs / 1_000;
   }
 
@@ -70,10 +64,7 @@
         postJamIdleDelayMs:     form.postJamIdleMin * 60_000,
       },
       pool: {
-        itemCooldownMs:          form.itemCooldownMin * 60_000,
-        authorDisplayCooldownMs: form.authorCooldownMin * 60_000,
         clipQuotaPerParticipant: form.clipQuota,
-        freshItemWindowMs:       form.freshWindowMin * 60_000,
       },
       client: {
         watchdogTimeoutMs: form.watchdogSec * 1_000,
@@ -156,25 +147,12 @@
 
   <section class="settings-section">
     <div class="section-title">Pool</div>
-    <FieldGroup id="cfg-item-cd" label="Cooldown item" desc="Délai minimum entre deux diffusions du même item" unit="min" value={form.itemCooldownMin}>
-      <input id="cfg-item-cd" type="number" min="1" bind:value={form.itemCooldownMin} />
-    </FieldGroup>
-    <FieldGroup id="cfg-author-cd" label="Cooldown auteur" desc="Délai minimum entre deux items du même auteur à l'écran" unit="min" value={form.authorCooldownMin}>
-      <input id="cfg-author-cd" type="number" min="1" bind:value={form.authorCooldownMin} />
-    </FieldGroup>
     <FieldGroup id="cfg-clip-quota" label="Quota clips" desc="Nombre maximum de clips vidéo acceptés par participant" unit="clips" value={form.clipQuota}>
       <input id="cfg-clip-quota" type="number" min="1" max="20" bind:value={form.clipQuota} />
-    </FieldGroup>
-    <FieldGroup id="cfg-fresh" label="Fenêtre fresh" desc="Items soumis dans cette fenêtre reçoivent un bonus de fraîcheur" unit="min" value={form.freshWindowMin}>
-      <input id="cfg-fresh" type="number" min="1" bind:value={form.freshWindowMin} />
     </FieldGroup>
     <div class="field-row">
       <span class="field-label">Total items</span>
       <span class="mono">{socketState.globalState?.pool.total ?? '—'}</span>
-    </div>
-    <div class="field-row">
-      <span class="field-label">Fresh items</span>
-      <span class="mono">{socketState.globalState?.pool.fresh ?? '—'}</span>
     </div>
   </section>
 

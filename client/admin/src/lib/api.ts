@@ -184,7 +184,7 @@ export const api = {
       return request(`/api/items${qs ? `?${qs}` : ''}`);
     },
 
-    create(payload: { type: 'note' | 'ticker'; text: string; label?: string; pinned?: boolean }): Promise<MediaItem> {
+    create(payload: { type: 'note' | 'ticker'; text: string; label?: string }): Promise<MediaItem> {
       return request('/api/items/create', {
         method: 'POST',
         body: JSON.stringify(payload),
@@ -198,11 +198,12 @@ export const api = {
       });
     },
 
-    updatePin(id: string, pinned: boolean): Promise<{ ok: boolean }> {
-      return request(`/api/items/${encodeURIComponent(id)}/pin`, {
-        method: 'PATCH',
-        body: JSON.stringify({ pinned }),
-      });
+    listPlayed(): Promise<(MediaItem & { playedAt: number })[]> {
+      return request('/api/items/played');
+    },
+
+    requeue(id: string): Promise<{ ok: boolean }> {
+      return request(`/api/items/${encodeURIComponent(id)}/requeue`, { method: 'POST' });
     },
 
     delete(id: string): Promise<{ ok: boolean }> {

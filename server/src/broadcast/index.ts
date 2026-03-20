@@ -342,7 +342,7 @@ export class BroadcastManager {
         return {
           jam:       persisted.jam,
           broadcast: { activeApp: persisted.activeApp, transition: 'idle', panicState: persisted.panicState ?? false, panicMessage: persisted.panicMessage ?? '', nextTriggerAt: null, activeItemIds: [], regime: 'normal' },
-          pool:      { total: 0, fresh: 0, queueSnapshot: [], byType: {}, pinned: 0, scoreMax: null, scoreMin: null, holdCount: 0 },
+          pool:      { total: 0, queueSnapshot: [], byType: {}, holdCount: 0 },
         };
       }
     } catch (err) {
@@ -352,7 +352,7 @@ export class BroadcastManager {
     return {
       jam:       { status: 'idle', startedAt: null, endsAt: null, timeRemaining: null },
       broadcast: { activeApp: 'pre-jam-idle', transition: 'idle', panicState: false, panicMessage: '', nextTriggerAt: null, activeItemIds: [], regime: 'normal' },
-      pool:      { total: 0, fresh: 0, queueSnapshot: [], byType: {}, pinned: 0, scoreMax: null, scoreMin: null, holdCount: 0 },
+      pool:      { total: 0, queueSnapshot: [], byType: {}, holdCount: 0 },
     };
   }
 

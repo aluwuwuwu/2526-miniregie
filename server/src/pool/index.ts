@@ -1,26 +1,22 @@
 import { EventEmitter } from 'node:events';
 import { randomUUID } from 'node:crypto';
-import { computeScore } from './scoring.js';
 import { sanitize } from './sanitize.js';
 import { guard } from './guard.js';
 import {
-  insertItem, updateStatus, updateContent, updatePriority, updatePinned, clearAllPinned,
-  getReadyItems, getItemById, getLastSubmissionAt, getClipCount, insertEvent,
-  type ReadyItemFilters, type ScoredRow,
+  insertItem, updateStatus, updateContent, updatePriority, updateSubmittedAt,
+  getReadyItems, getPlayedItems, getItemById, getLastSubmissionAt, getClipCount, insertEvent,
+  type ReadyItemFilters, type ScoredRow, type PlayedRow,
 } from '../db/queries.js';
 import type { GlobalState, MediaItem, MediaType, ScoredMediaItem } from '../../../shared/types.js';
 import type { RawInput, ValidatedInput } from './types.js';
 import { resolve } from './resolve.js';
 import { getJamConfig } from '../jam-config.js';
 
-const SAME_AUTHOR_PENALTY = 30;
-
 // ─── Filter types ─────────────────────────────────────────────────────────────
 
 export interface NextItemFilters {
   types?:          MediaType[];
   submittedAfter?: number;
-  excludeAuthorIds?: string[];
 }
 
 export interface GetQueueFilters {
@@ -28,8 +24,6 @@ export interface GetQueueFilters {
   excludeTypes?:    MediaType[];
   submittedAfter?:  number;
   submittedBefore?: number;
-  withCooldown?:    boolean; // default: true
-  scoring?:         boolean; // default: true — false = sort by submittedAt ASC
 }
 
 export interface GetItemsFilters {
@@ -43,8 +37,6 @@ export interface GetItemsFilters {
 export class PoolManager extends EventEmitter {
   private readonly getJamState: () => GlobalState['jam'];
   private readonly cfg: ReturnType<typeof getJamConfig>['pool'];
-  // authorId → timestamp of last display
-  private recentDisplayedAuthors = new Map<string, number>();
 
   constructor(options: { getJamState: () => GlobalState['jam'] }) {
     super();
@@ -80,7 +72,6 @@ export class PoolManager extends EventEmitter {
       content:     {} as MediaItem['content'], // filled by RESOLVE
       priority,
       status:      'pending',
-      pinned:      false,
       submittedAt: Date.now(),
       author:      { participantId, displayName: '', team: '', role: '' }, // snapshot filled by caller
     };
@@ -135,142 +126,44 @@ export class PoolManager extends EventEmitter {
   // ─── Stats (for GlobalState) ────────────────────────────────────────────────
 
   getStats(holdCount = 0): GlobalState['pool'] {
-    const now = Date.now();
     const rows = getReadyItems({ excludeTypes: ['ticker'] });
-    const authorCounts = this.computeAuthorReadyCounts(rows);
 
-    let freshCount  = 0;
-    let pinnedCount = 0;
     const byType: Record<string, number> = {};
-
-    const scored = rows
-      .map(row => {
-        if (now - row.submittedAt < this.cfg.freshItemWindowMs) freshCount++;
-        if (row.pinned) pinnedCount++;
-        byType[row.type] = (byType[row.type] ?? 0) + 1;
-        return {
-          row,
-          score: computeScore(row, {
-            displayed:       row.displayedCount,
-            skipped:         row.skippedCount,
-            sameAuthorReady: (authorCounts.get(row.author.participantId) ?? 1) - 1,
-          }, now),
-        };
-      })
-      .sort((a, b) => b.score - a.score);
-
-    const scoreMax = scored.length > 0 ? (scored[0]?.score ?? null) : null;
-    const scoreMin = scored.length > 0 ? (scored[scored.length - 1]?.score ?? null) : null;
+    for (const row of rows) byType[row.type] = (byType[row.type] ?? 0) + 1;
 
     return {
       total:         rows.length,
-      fresh:         freshCount,
-      queueSnapshot: scored.slice(0, 15).map(s => s.row),
+      queueSnapshot: [...rows].sort(fifoSort).slice(0, 15),
       byType,
-      pinned:    pinnedCount,
-      scoreMax,
-      scoreMin,
       holdCount,
     };
   }
 
-  // ─── Admin scored queue ─────────────────────────────────────────────────────
+  // ─── Admin queue view ────────────────────────────────────────────────────────
 
-  getScoredQueue(now: number = Date.now()): ScoredMediaItem[] {
+  getScoredQueue(): ScoredMediaItem[] {
     const rows = getReadyItems({ excludeTypes: ['ticker'] });
-    const authorCounts = this.computeAuthorReadyCounts(rows);
-
-    return rows
-      .map(row => {
-        const score = computeScore(row, {
-          displayed:       row.displayedCount,
-          skipped:         row.skippedCount,
-          sameAuthorReady: (authorCounts.get(row.author.participantId) ?? 1) - 1,
-        }, now);
-
-        // Item cooldown: hard filter expiry timestamp, null if not in cooldown
-        const cooldownEndsAt = (row.lastActivityAt !== null && now - row.lastActivityAt < this.cfg.itemCooldownMs)
-          ? row.lastActivityAt + this.cfg.itemCooldownMs
-          : null;
-
-        // Author display cooldown: based on in-memory Map populated by markDisplayed()
-        const authorLastDisplay = this.recentDisplayedAuthors.get(row.author.participantId);
-        const authorCooldownEndsAt = (authorLastDisplay !== undefined && now - authorLastDisplay < this.cfg.authorDisplayCooldownMs)
-          ? authorLastDisplay + this.cfg.authorDisplayCooldownMs
-          : null;
-
-        const scoredItem: ScoredMediaItem = {
-          ...row,
-          score,
-          displayedCount:       row.displayedCount,
-          skippedCount:         row.skippedCount,
-          cooldownEndsAt,
-          authorCooldownEndsAt,
-        };
-        return scoredItem;
-      })
-      .sort((a, b) => b.score - a.score);
+    return [...rows].sort(fifoSort).map(row => ({
+      ...row,
+      displayedCount: row.displayedCount,
+      skippedCount:   row.skippedCount,
+    }));
   }
 
   // ─── Read ───────────────────────────────────────────────────────────────────
 
   nextItem(filters: NextItemFilters = {}): MediaItem | null {
-    const now = Date.now();
     const dbFilters: ReadyItemFilters = { excludeTypes: ['ticker'] };
     if (filters.types)          dbFilters.types          = filters.types;
     if (filters.submittedAfter) dbFilters.submittedAfter = filters.submittedAfter;
 
     const rows = getReadyItems(dbFilters);
+    if (rows.length === 0) return null;
 
-    // Compute per-author ready count for same-author penalty
-    const authorReadyCount = this.computeAuthorReadyCounts(rows);
-
-    // Active author cooldown
-    const cooldownAuthors = new Set(
-      [...this.recentDisplayedAuthors.entries()]
-        .filter(([, ts]) => now - ts < this.cfg.authorDisplayCooldownMs)
-        .map(([id]) => id),
-    );
-
-    const candidates = rows
-      .filter(row => {
-        // Item cooldown
-        if (row.lastActivityAt && now - row.lastActivityAt < this.cfg.itemCooldownMs) return false;
-        // Author display cooldown — skip if queue has other options
-        if (cooldownAuthors.has(row.author.participantId)) return false;
-        // Explicit exclude
-        if (filters.excludeAuthorIds?.includes(row.author.participantId)) return false;
-        return true;
-      });
-
-    // If all candidates are filtered by author cooldown, relax it
-    const pool = candidates.length > 0 ? candidates : rows.filter(row =>
-      !row.lastActivityAt || now - row.lastActivityAt >= this.cfg.itemCooldownMs,
-    );
-
-    if (pool.length === 0) return null;
-
-    // Score and pick best
-    return pool.reduce<ScoredRow | null>((best, row) => {
-      const score = computeScore(row, {
-        displayed:       row.displayedCount,
-        skipped:         row.skippedCount,
-        sameAuthorReady: (authorReadyCount.get(row.author.participantId) ?? 1) - 1,
-      }, now);
-      const bestScore = best ? computeScore(best, {
-        displayed:       best.displayedCount,
-        skipped:         best.skippedCount,
-        sameAuthorReady: (authorReadyCount.get(best.author.participantId) ?? 1) - 1,
-      }, now) : -Infinity;
-      return score > bestScore ? row : best;
-    }, null);
+    return rows.sort(fifoSort)[0] ?? null;
   }
 
   getQueue(filters: GetQueueFilters = {}): MediaItem[] {
-    const now = Date.now();
-    const withCooldown = filters.withCooldown ?? true;
-    const scoring      = filters.scoring      ?? true;
-
     const dbFilters: ReadyItemFilters = {};
     if (filters.types)           dbFilters.types           = filters.types;
     if (filters.excludeTypes)    dbFilters.excludeTypes    = filters.excludeTypes;
@@ -278,22 +171,7 @@ export class PoolManager extends EventEmitter {
     if (filters.submittedAfter)  dbFilters.submittedAfter  = filters.submittedAfter;
     if (filters.submittedBefore) dbFilters.submittedBefore = filters.submittedBefore;
 
-    let rows = getReadyItems(dbFilters);
-
-    if (withCooldown) {
-      rows = rows.filter(row => !row.lastActivityAt || now - row.lastActivityAt >= this.cfg.itemCooldownMs);
-    }
-
-    if (!scoring) {
-      return rows.sort((a, b) => a.submittedAt - b.submittedAt);
-    }
-
-    const authorReadyCount = this.computeAuthorReadyCounts(rows);
-    return rows.sort((a, b) => {
-      const scoreA = computeScore(a, { displayed: a.displayedCount, skipped: a.skippedCount, sameAuthorReady: (authorReadyCount.get(a.author.participantId) ?? 1) - 1 }, now);
-      const scoreB = computeScore(b, { displayed: b.displayedCount, skipped: b.skippedCount, sameAuthorReady: (authorReadyCount.get(b.author.participantId) ?? 1) - 1 }, now);
-      return scoreB - scoreA;
-    });
+    return getReadyItems(dbFilters).sort(fifoSort);
   }
 
   getItems(filters: GetItemsFilters = {}): MediaItem[] {
@@ -302,28 +180,32 @@ export class PoolManager extends EventEmitter {
     if (filters.submittedAfter) dbFilters.submittedAfter = filters.submittedAfter;
 
     const rows = getReadyItems(dbFilters);
-    const sorted = filters.sort === 'submittedAt DESC'
+    return filters.sort === 'submittedAt DESC'
       ? rows.sort((a, b) => b.submittedAt - a.submittedAt)
       : rows.sort((a, b) => a.submittedAt - b.submittedAt);
-
-    return sorted;
   }
 
   // ─── Write (called by apps) ─────────────────────────────────────────────────
 
   markDisplayed(itemId: string, appId: string): void {
-    // Use getItemById (any status) — item may have been evicted by admin while on screen
     const item = getItemById(itemId);
-    if (!item) return; // item deleted entirely, nothing to record
+    if (!item) return;
 
     insertEvent({ id: randomUUID(), itemId, type: 'displayed', appId, payload: null, createdAt: Date.now() });
+    updateStatus(itemId, 'played');
 
-    // Track author for display cooldown
-    this.recentDisplayedAuthors.set(item.author.participantId, Date.now());
+    this.emit('update');
+  }
 
-    // Auto-evict after display if pinned and still ready
-    if (item.pinned && item.status === 'ready') this.evict(itemId, 'post-pin');
+  getPlayedItems(): PlayedRow[] {
+    return getPlayedItems();
+  }
 
+  requeue(id: string): void {
+    // Reset submittedAt to now so the item lands at the back of the FIFO queue
+    updateSubmittedAt(id, Date.now());
+    updatePriority(id, 100);
+    updateStatus(id, 'ready');
     this.emit('update');
   }
 
@@ -334,20 +216,10 @@ export class PoolManager extends EventEmitter {
 
   markHeld(itemId: string, appId: string, durationMs: number): void {
     insertEvent({ id: randomUUID(), itemId, type: 'held', appId, payload: { duration: durationMs }, createdAt: Date.now() });
-    // No 'update' emit — held events are invisible to scoring
   }
 
-  pin(id: string): void {
-    clearAllPinned();
-    updatePriority(id, 999);
-    updatePinned(id, true);
-    insertEvent({ id: randomUUID(), itemId: id, type: 'pinned', appId: null, payload: null, createdAt: Date.now() });
-    this.emit('update');
-  }
-
-  evict(id: string, reason: 'manual' | 'post-pin' | 'unresolvable'): void {
+  evict(id: string, reason: 'manual' | 'unresolvable'): void {
     updateStatus(id, 'evicted');
-    updatePinned(id, false);
     insertEvent({ id: randomUUID(), itemId: id, type: 'evicted', appId: null, payload: { reason }, createdAt: Date.now() });
     this.emit('update');
   }
@@ -355,28 +227,14 @@ export class PoolManager extends EventEmitter {
   // ─── Reset ──────────────────────────────────────────────────────────────────
 
   reset(): void {
-    this.recentDisplayedAuthors.clear();
     this.emit('update');
   }
 
-  // ─── Author cooldown (for /api/pool/authors) ─────────────────────────────────
+}
 
-  getAuthorCooldownEndsAt(authorId: string, now = Date.now()): number | null {
-    const lastDisplay = this.recentDisplayedAuthors.get(authorId);
-    if (lastDisplay === undefined) return null;
-    const endsAt = lastDisplay + this.cfg.authorDisplayCooldownMs;
-    return endsAt > now ? endsAt : null;
-  }
+// ─── FIFO sort: admin drag order (priority DESC), then submission order ────────
 
-  // ─── Helpers ────────────────────────────────────────────────────────────────
-
-  private computeAuthorReadyCounts(rows: ScoredRow[]): Map<string, number> {
-    const counts = new Map<string, number>();
-    for (const row of rows) {
-      const id = row.author.participantId;
-      counts.set(id, (counts.get(id) ?? 0) + 1);
-    }
-    return counts;
-  }
-
+function fifoSort(a: ScoredRow, b: ScoredRow): number {
+  if (b.priority !== a.priority) return b.priority - a.priority;
+  return a.submittedAt - b.submittedAt;
 }

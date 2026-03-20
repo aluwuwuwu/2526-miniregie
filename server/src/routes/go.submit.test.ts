@@ -78,7 +78,6 @@ function makePool(overrides: Partial<{ addItem: PoolManager['addItem'] }> = {}):
     content:     { text: 'hello' },
     priority:    100,
     status:      'pending',
-    pinned:      false,
     submittedAt: Date.now(),
     author: {
       participantId: fakeParticipant.id,
@@ -133,7 +132,6 @@ describe('POST /go/api/submit', () => {
         content:     { text: 'Hello from ticker' },
         priority:    100,
         status:      'pending',
-        pinned:      false,
         submittedAt: Date.now(),
         author: {
           participantId: fakeParticipant.id,
@@ -165,7 +163,6 @@ describe('POST /go/api/submit', () => {
         content:     { url: '/uploads/photo.jpg', caption: null },
         priority:    100,
         status:      'pending',
-        pinned:      false,
         submittedAt: Date.now(),
         author: {
           participantId: fakeParticipant.id,
@@ -200,7 +197,6 @@ describe('POST /go/api/submit', () => {
         content:     { url: '/uploads/clip.mp4', duration: 0, mimeType: 'video/mp4', caption: null },
         priority:    100,
         status:      'pending',
-        pinned:      false,
         submittedAt: Date.now(),
         author: {
           participantId: fakeParticipant.id,

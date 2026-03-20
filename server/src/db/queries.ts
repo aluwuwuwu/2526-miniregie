@@ -15,7 +15,6 @@ export interface ReadyItemFilters {
 export type ScoredRow = MediaItem & {
   displayedCount: number;
   skippedCount:   number;
-  lastActivityAt: number | null; // used for 5min cooldown
 };
 
 export interface AllItemsFilters {
@@ -27,7 +26,7 @@ export interface AllItemsFilters {
 
 function rowToMediaItem(row: {
   id: string; type: string; content: unknown; priority: number;
-  status: string; pinned: boolean; submittedAt: number; authorId: string;
+  status: string; submittedAt: number; authorId: string;
   authorDisplayName: string; authorTeam: string; authorRole: string;
 }): MediaItem {
   return {
@@ -36,7 +35,6 @@ function rowToMediaItem(row: {
     content:     row.content     as MediaItem['content'],
     priority:    row.priority,
     status:      row.status      as MediaStatus,
-    pinned:      row.pinned,
     submittedAt: row.submittedAt,
     author: {
       participantId: row.authorId,
@@ -72,7 +70,6 @@ export function insertItem(item: MediaItem): void {
     content:     item.content,
     priority:    item.priority,
     status:      item.status,
-    pinned:      item.pinned,
     submittedAt: item.submittedAt,
     authorId:    item.author.participantId,
   }).run();
@@ -85,7 +82,6 @@ export function getItemById(id: string): MediaItem | null {
     content:           mediaItems.content,
     priority:          mediaItems.priority,
     status:            mediaItems.status,
-    pinned:            mediaItems.pinned,
     submittedAt:       mediaItems.submittedAt,
     authorId:          mediaItems.authorId,
     authorDisplayName: participants.displayName,
@@ -112,12 +108,8 @@ export function updatePriority(id: string, priority: number): void {
   db.update(mediaItems).set({ priority }).where(eq(mediaItems.id, id)).run();
 }
 
-export function updatePinned(id: string, pinned: boolean): void {
-  db.update(mediaItems).set({ pinned }).where(eq(mediaItems.id, id)).run();
-}
-
-export function clearAllPinned(): void {
-  db.update(mediaItems).set({ pinned: false }).where(eq(mediaItems.pinned, true)).run();
+export function updateSubmittedAt(id: string, submittedAt: number): void {
+  db.update(mediaItems).set({ submittedAt }).where(eq(mediaItems.id, id)).run();
 }
 
 export function getReadyItems(filters: ReadyItemFilters = {}): ScoredRow[] {
@@ -134,7 +126,6 @@ export function getReadyItems(filters: ReadyItemFilters = {}): ScoredRow[] {
     content:           mediaItems.content,
     priority:          mediaItems.priority,
     status:            mediaItems.status,
-    pinned:            mediaItems.pinned,
     submittedAt:       mediaItems.submittedAt,
     authorId:          mediaItems.authorId,
     authorDisplayName: participants.displayName,
@@ -142,7 +133,6 @@ export function getReadyItems(filters: ReadyItemFilters = {}): ScoredRow[] {
     authorRole:        participants.role,
     displayedCount: sql<number>`COALESCE(SUM(CASE WHEN ${mediaEvents.type} = 'displayed' THEN 1 ELSE 0 END), 0)`,
     skippedCount:   sql<number>`COALESCE(SUM(CASE WHEN ${mediaEvents.type} = 'skipped'  THEN 1 ELSE 0 END), 0)`,
-    lastActivityAt: sql<number | null>`MAX(CASE WHEN ${mediaEvents.type} IN ('displayed', 'skipped') THEN ${mediaEvents.createdAt} END)`,
   })
   .from(mediaItems)
   .innerJoin(participants, eq(mediaItems.authorId, participants.id))
@@ -151,7 +141,35 @@ export function getReadyItems(filters: ReadyItemFilters = {}): ScoredRow[] {
   .groupBy(mediaItems.id)
   .all();
 
-  return rows.map(row => ({ ...rowToMediaItem(row), displayedCount: row.displayedCount, skippedCount: row.skippedCount, lastActivityAt: row.lastActivityAt }));
+  return rows.map(row => ({ ...rowToMediaItem(row), displayedCount: row.displayedCount, skippedCount: row.skippedCount }));
+}
+
+export type PlayedRow = MediaItem & { playedAt: number };
+
+export function getPlayedItems(): PlayedRow[] {
+  const rows = db.select({
+    id:                mediaItems.id,
+    type:              mediaItems.type,
+    content:           mediaItems.content,
+    priority:          mediaItems.priority,
+    status:            mediaItems.status,
+    submittedAt:       mediaItems.submittedAt,
+    authorId:          mediaItems.authorId,
+    authorDisplayName: participants.displayName,
+    authorTeam:        participants.team,
+    authorRole:        participants.role,
+    playedAt:          sql<number>`MAX(CASE WHEN ${mediaEvents.type} = 'displayed' THEN ${mediaEvents.createdAt} END)`,
+  })
+  .from(mediaItems)
+  .innerJoin(participants, eq(mediaItems.authorId, participants.id))
+  .leftJoin(mediaEvents, eq(mediaEvents.itemId, mediaItems.id))
+  .where(eq(mediaItems.status, 'played'))
+  .groupBy(mediaItems.id)
+  .all();
+
+  return rows
+    .map(row => ({ ...rowToMediaItem(row), playedAt: row.playedAt ?? row.submittedAt }))
+    .sort((a, b) => b.playedAt - a.playedAt);
 }
 
 export function getAllItems(filters: AllItemsFilters = {}): MediaItem[] {
@@ -165,7 +183,6 @@ export function getAllItems(filters: AllItemsFilters = {}): MediaItem[] {
     content:           mediaItems.content,
     priority:          mediaItems.priority,
     status:            mediaItems.status,
-    pinned:            mediaItems.pinned,
     submittedAt:       mediaItems.submittedAt,
     authorId:          mediaItems.authorId,
     authorDisplayName: participants.displayName,

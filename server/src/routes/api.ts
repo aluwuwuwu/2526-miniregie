@@ -4,7 +4,6 @@ import { requireAuth, requireRole } from "../middleware/auth.js";
 import {
   getAllItems,
   updateStatus,
-  updatePinned,
   updatePriority,
   updateContent,
   deleteItem,
@@ -14,9 +13,9 @@ import {
   getParticipantById,
   setParticipantRole,
 } from "../db/queries.js";
-import type { MediaStatus, AppId, MediaItem, JamConfig, AuthorStats } from "../../../shared/types.js";
-import type { BroadcastManager } from "../broadcast/index.js";
-import type { PoolManager } from "../pool/index.js";
+import type { MediaStatus, AppId, MediaItem, JamConfig, AuthorStats } from "@shared/types";
+import type { BroadcastManager } from "../broadcast";
+import type { PoolManager } from "../pool";
 import { getJamConfig, updateJamConfig } from "../jam-config.js";
 
 const VALID_STATUSES: MediaStatus[] = ["pending", "ready", "evicted"];
@@ -126,11 +125,10 @@ export default function createApiRouter(broadcast: BroadcastManager, pool: PoolM
   // ─── Items ────────────────────────────────────────────────────────────────────
 
   router.post("/items/create", (req, res) => {
-    const { type, text, label, pinned } = req.body as {
+    const { type, text, label } = req.body as {
       type?: unknown;
       text?: unknown;
       label?: unknown;
-      pinned?: unknown;
     };
 
     if (type !== "note" && type !== "ticker") {
@@ -154,14 +152,11 @@ export default function createApiRouter(broadcast: BroadcastManager, pool: PoolM
         : { text: text.trim() },
       priority:    type === "ticker" ? 80 : 100,
       status:      "ready",
-      pinned:      false,
       submittedAt: Date.now(),
       author:      ADMIN_AUTHOR,
     };
 
     pool.addDirectItem(item);
-    if (pinned === true) pool.pin(item.id);
-
     res.status(201).json(item);
   });
 
@@ -205,19 +200,6 @@ export default function createApiRouter(broadcast: BroadcastManager, pool: PoolM
     res.json({ ok: true });
   });
 
-  router.patch("/items/:id/pin", (req, res) => {
-    const { id } = req.params as { id: string };
-    const { pinned } = req.body as { pinned?: unknown };
-
-    if (typeof pinned !== "boolean") {
-      res.status(400).json({ error: "pinned must be a boolean" });
-      return;
-    }
-
-    updatePinned(id, pinned);
-    res.json({ ok: true });
-  });
-
   router.delete("/items/:id", (req, res) => {
     const { id } = req.params as { id: string };
     deleteItem(id);
@@ -227,6 +209,16 @@ export default function createApiRouter(broadcast: BroadcastManager, pool: PoolM
   router.post("/items/:id/skip", (req, res) => {
     const { id } = req.params as { id: string };
     pool.markSkipped(id, "admin");
+    res.json({ ok: true });
+  });
+
+  router.get("/items/played", (_req, res) => {
+    res.json(pool.getPlayedItems());
+  });
+
+  router.post("/items/:id/requeue", (req, res) => {
+    const { id } = req.params as { id: string };
+    pool.requeue(id);
     res.json({ ok: true });
   });
 
@@ -260,7 +252,7 @@ export default function createApiRouter(broadcast: BroadcastManager, pool: PoolM
       if (typeof text === "string" && "text" in content) {
         content.text = text;
       }
-      updateContent(id, content as MediaItem["content"]);
+      updateContent(id, content as unknown as MediaItem["content"]);
     }
 
     res.json({ ok: true });
@@ -287,7 +279,6 @@ export default function createApiRouter(broadcast: BroadcastManager, pool: PoolM
           readyCount:     0,
           displayedCount: 0,
           skippedCount:   0,
-          cooldownEndsAt: pool.getAuthorCooldownEndsAt(participantId),
           banned:         participant?.banned ?? false,
         };
         map.set(participantId, entry);

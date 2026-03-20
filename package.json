@@ -22,7 +22,8 @@
     "format": "biome format --write .",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "drizzle-kit migrate",
-    "db:studio": "drizzle-kit studio"
+    "db:studio": "drizzle-kit studio",
+    "dev:reset": "node -e \"require('fs').rmSync('miniregie.db',{force:true});require('fs').rmSync('miniregie.db-wal',{force:true});require('fs').rmSync('miniregie.db-shm',{force:true});require('fs').writeFileSync('state.json',JSON.stringify({jam:{status:'idle',startedAt:null,endsAt:null,timeRemaining:null},activeApp:'pre-jam-idle',panicState:false,panicMessage:''},null,2));\" && npx tsx --env-file=.env server/src/db/seed-dev.ts"
   },
   "dependencies": {
     "better-sqlite3": "^12.6.2",

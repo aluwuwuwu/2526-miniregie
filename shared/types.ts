@@ -1,8 +1,8 @@
 // ─── Media ───────────────────────────────────────────────────────────────────
 
 export type MediaType = 'photo' | 'gif' | 'note' | 'clip' | 'link' | 'youtube' | 'interview' | 'ticker';
-export type MediaStatus = 'pending' | 'ready' | 'evicted';
-export type MediaEventType = 'displayed' | 'skipped' | 'held' | 'pinned' | 'evicted' | 'enriched';
+export type MediaStatus = 'pending' | 'ready' | 'played' | 'evicted';
+export type MediaEventType = 'displayed' | 'skipped' | 'held' | 'evicted' | 'enriched';
 
 export interface MediaItem {
   id: string;
@@ -10,7 +10,6 @@ export interface MediaItem {
   content: MediaContent;
   priority: number;
   status: MediaStatus;
-  pinned: boolean;
   submittedAt: number; // timestamp ms
   author: MediaAuthor;
 }
@@ -61,11 +60,8 @@ export interface MediaAuthor {
 // ─── Scored item (admin queue view) ──────────────────────────────────────────
 
 export interface ScoredMediaItem extends MediaItem {
-  score: number;
   displayedCount: number;
   skippedCount: number;
-  cooldownEndsAt: number | null;       // ms timestamp — null if not in item cooldown
-  authorCooldownEndsAt: number | null; // ms timestamp — null if author not in display cooldown
 }
 
 export interface MediaEvent {
@@ -102,7 +98,6 @@ export interface AuthorStats {
   readyCount:     number;       // items currently ready in pool
   displayedCount: number;       // items displayed this session
   skippedCount:   number;       // items skipped this session
-  cooldownEndsAt: number | null; // null if author not in display cooldown
   banned:         boolean;
 }
 
@@ -133,9 +128,6 @@ export interface GlobalState {
     queueSnapshot: MediaItem[];
     // Health fields
     byType:    Record<string, number>; // { photo: 5, note: 12, … }
-    pinned:    number;                 // count of pinned items
-    scoreMax:  number | null;          // score of the top-ranked item (ready, non-ticker)
-    scoreMin:  number | null;          // score of the lowest-ranked item (ready, non-ticker)
     holdCount: number;                 // cumulative times jam-mode entered hold regime since JAM start
   };
 }
@@ -219,10 +211,7 @@ export interface JamConfig {
     postJamIdleDelayMs:     number; // ms — delay after JAM end before switching to post-jam-idle
   };
   pool: {
-    itemCooldownMs:          number; // ms — before a displayed item can be shown again
-    authorDisplayCooldownMs: number; // ms — before the same author's item can be shown again
     clipQuotaPerParticipant: number; // max clips per participant per JAM
-    freshItemWindowMs:       number; // ms — items submitted within this window are counted as "fresh"
   };
   client: {
     watchdogTimeoutMs: number; // ms — without server ping before broadcast client reloads

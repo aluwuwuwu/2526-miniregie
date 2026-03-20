@@ -35,10 +35,10 @@
   --danger-dim:  #b71c1c;
   --info:        #3b82f6;
 
-  /* Text */
-  --text:        #dcdcdc;
-  --text-muted:  #888888;
-  --text-dim:    #555555;
+  /* Text — contrasts verified on --bg-panel (#222) */
+  --text:        #dcdcdc; /* 11.6:1 */
+  --text-muted:  #909090; /*  5.0:1 — was #888 (4.47:1, borderline fail at 11px) */
+  --text-dim:    #6e6e6e; /*  3.1:1 — was #555 (2.12:1, clear fail) */
 
   /* Typography */
   --font:        system-ui, -apple-system, 'Segoe UI', sans-serif;
