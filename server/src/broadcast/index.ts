@@ -5,7 +5,8 @@ import type { Server, Socket } from 'socket.io';
 import { shouldFire, parseScheduleEntry } from './triggers.js';
 import { validateJamTransition } from './jam-state.js';
 import { insertBroadcastEvent, resetAllMedia, getScheduleEntries, markScheduleEntryFired, resetScheduleStatus } from '../db/queries.js';
-import type { GlobalState, LimitTrigger, MarketTrigger, AppId, JamStatus } from '../../../shared/types.js';
+import type { GlobalState, LimitTrigger, MarketTrigger, AppId, JamStatus, MediaItem } from '../../../shared/types.js';
+import { resolveLayout } from '../apps/jam-mode/layout-engine.js';
 import type { PoolManager } from '../pool/index.js';
 import { getJamConfig } from '../jam-config.js';
 
@@ -54,6 +55,10 @@ export class BroadcastManager {
     this.schedule   = this.loadSchedule();
     this.state      = this.loadOrInitState();
     this.state.pool = this.pool.getStats(); // populate from DB on startup
+
+    // Pre-compute so the first socket 'state' emit includes accurate predictions
+    this.state.broadcast.activeLayout   = this.computeActiveLayout();
+    this.state.broadcast.nextPrediction = this.computeNextPrediction();
 
     this.setupSocketHandlers();
     this.setupPoolListeners();
@@ -185,7 +190,7 @@ export class BroadcastManager {
     // Reset JAM state machine
     this.holdCount       = 0;
     this.state.jam       = { status: 'idle', startedAt: null, endsAt: null, timeRemaining: null };
-    this.state.broadcast = { activeApp: 'pre-jam-idle', transition: 'idle', panicState: false, panicMessage: '', nextTriggerAt: null, activeItemIds: [], regime: 'normal' };
+    this.state.broadcast = { activeApp: 'pre-jam-idle', transition: 'idle', panicState: false, panicMessage: '', nextTriggerAt: null, activeItemIds: [], regime: 'normal', activeLayout: null, nextPrediction: null };
 
     // Reset all schedule entries in DB and reload so triggers can fire again
     resetScheduleStatus();
@@ -321,8 +326,44 @@ export class BroadcastManager {
 
   private emitState(): void {
     this.state.pool = this.pool.getStats(this.holdCount);
-    this.state.broadcast.nextTriggerAt = this.computeNextTriggerAt();
+    this.state.broadcast.nextTriggerAt  = this.computeNextTriggerAt();
+    this.state.broadcast.activeLayout   = this.computeActiveLayout();
+    this.state.broadcast.nextPrediction = this.computeNextPrediction();
     this.io.emit('state', this.state);
+  }
+
+  private computeActiveLayout(): string | null {
+    const { activeItemIds } = this.state.broadcast;
+    if (activeItemIds.length === 0) return null;
+    const snapshot = this.state.pool.queueSnapshot;
+    const items = activeItemIds
+      .map(id => snapshot.find(i => i.id === id))
+      .filter((i): i is MediaItem => i !== undefined);
+    return items.length > 0 ? resolveLayout(items) : null;
+  }
+
+  private computeNextPrediction(): GlobalState['broadcast']['nextPrediction'] {
+    const activeIds = new Set(this.state.broadcast.activeItemIds);
+    const remaining = this.state.pool.queueSnapshot
+      .filter(i => i.type !== 'ticker' && !activeIds.has(i.id));
+
+    if (remaining.length === 0) return null;
+
+    let selected: MediaItem[] = [remaining[0]!];
+
+    // Try pairing primary with companion
+    if (remaining.length >= 2) {
+      const two = resolveLayout([remaining[0]!, remaining[1]!]);
+      if (two !== 'IDLE') selected = [remaining[0]!, remaining[1]!];
+    }
+
+    // Youtube can take a third item (visual + note companion)
+    if (remaining.length >= 3 && remaining[0]!.type === 'youtube') {
+      const three = resolveLayout(remaining.slice(0, 3));
+      if (three !== 'IDLE') selected = remaining.slice(0, 3);
+    }
+
+    return { layout: resolveLayout(selected), itemIds: selected.map(i => i.id) };
   }
 
   // ─── Persistence ────────────────────────────────────────────────────────────
@@ -342,7 +383,7 @@ export class BroadcastManager {
 
         return {
           jam:       persisted.jam,
-          broadcast: { activeApp: persisted.activeApp, transition: 'idle', panicState: persisted.panicState ?? false, panicMessage: persisted.panicMessage ?? '', nextTriggerAt: null, activeItemIds: [], regime: 'normal' },
+          broadcast: { activeApp: persisted.activeApp, transition: 'idle', panicState: persisted.panicState ?? false, panicMessage: persisted.panicMessage ?? '', nextTriggerAt: null, activeItemIds: [], regime: 'normal', activeLayout: null, nextPrediction: null },
           pool:      { total: 0, queueSnapshot: [], byType: {}, holdCount: 0 },
         };
       }
@@ -352,7 +393,7 @@ export class BroadcastManager {
 
     return {
       jam:       { status: 'idle', startedAt: null, endsAt: null, timeRemaining: null },
-      broadcast: { activeApp: 'pre-jam-idle', transition: 'idle', panicState: false, panicMessage: '', nextTriggerAt: null, activeItemIds: [], regime: 'normal' },
+      broadcast: { activeApp: 'pre-jam-idle', transition: 'idle', panicState: false, panicMessage: '', nextTriggerAt: null, activeItemIds: [], regime: 'normal', activeLayout: null, nextPrediction: null },
       pool:      { total: 0, queueSnapshot: [], byType: {}, holdCount: 0 },
     };
   }

@@ -5,7 +5,7 @@
   import LoginScreen from './components/auth/LoginScreen.svelte';
   import TopBar from './components/layout/TopBar.svelte';
   import ProgramMonitor from './components/broadcast/ProgramMonitor.svelte';
-  import QueueTabs from './components/queue/QueueTabs.svelte';
+  import RundownTabs from './components/queue/RundownTabs.svelte';
   import RightTabs from './components/layout/RightTabs.svelte';
   import SchedulePanel from './components/broadcast/SchedulePanel.svelte';
   import JamControlPanel from './components/broadcast/JamControlPanel.svelte';
@@ -34,7 +34,7 @@
           </Pane>
           <PaneResizer />
           <Pane defaultSize={34} minSize={10}>
-            <QueueTabs />
+            <RundownTabs />
           </Pane>
           <PaneResizer />
           <Pane defaultSize={33} minSize={10}>

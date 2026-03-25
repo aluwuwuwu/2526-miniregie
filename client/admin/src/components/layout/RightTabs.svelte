@@ -1,19 +1,13 @@
 <script lang="ts">
   import PanicPanel from '../broadcast/PanicPanel.svelte';
   import ParticipantsPanel from '../participants/ParticipantsPanel.svelte';
-  import OnAirPanel from '../queue/OnAirPanel.svelte';
   import SettingsTab from '../system/SettingsTab.svelte';
 
-  let active = $state<'onair' | 'panic' | 'participants' | 'settings'>('onair');
+  let active = $state<'panic' | 'participants' | 'settings'>('panic');
 </script>
 
 <div class="right-tabs">
   <div class="right-tabs__bar">
-    <button
-      class="right-tabs__tab"
-      class:right-tabs__tab--active={active === 'onair'}
-      onclick={() => (active = 'onair')}
-    >On Air</button>
     <button
       class="right-tabs__tab"
       class:right-tabs__tab--active={active === 'panic'}
@@ -32,9 +26,6 @@
   </div>
 
   <div class="right-tabs__content">
-    <div class="right-tabs__pane" class:right-tabs__pane--visible={active === 'onair'}>
-      <OnAirPanel />
-    </div>
     <div class="right-tabs__pane" class:right-tabs__pane--visible={active === 'panic'}>
       <PanicPanel />
     </div>

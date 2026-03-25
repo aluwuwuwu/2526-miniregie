@@ -25,9 +25,23 @@ export type LayoutName =
   | 'MEDIA_FULL'
   | 'MEDIA_WITH_VISUAL'
   | 'MEDIA_WITH_CAPTION'
+  | 'MEDIA_VIS_CAP'
   | 'VISUAL_FULL'
   | 'VISUAL_WITH_CAPTION'
-  | 'NOTE_CARD';
+  | 'NOTE_CARD'
+  | 'DUAL_VISUAL';
+
+// ─── YouTube IFrame API readiness ─────────────────────────────────────────────
+// The IFrame API loads asynchronously and calls window.onYouTubeIframeAPIReady.
+// mountYoutube defers player creation until that callback fires.
+
+let ytApiReady = false;
+const ytPendingCallbacks: Array<() => void> = [];
+
+(window as unknown as { onYouTubeIframeAPIReady?: () => void }).onYouTubeIframeAPIReady = () => {
+  ytApiReady = true;
+  ytPendingCallbacks.splice(0).forEach(cb => cb());
+};
 
 // ─── YouTube IFrame API minimal types ─────────────────────────────────────────
 
@@ -76,9 +90,12 @@ export function resolveLayout(primary: MediaItem | null, companion: MediaItem | 
 
   // YouTube primary + companion
   if (primary.type === 'youtube') {
-    if (isVisual(companion)) return 'MEDIA_WITH_VISUAL';
+    if (isVisual(companion)) return hasCaption(companion.content) ? 'MEDIA_VIS_CAP' : 'MEDIA_WITH_VISUAL';
     if (isText(companion))   return 'MEDIA_WITH_CAPTION';
   }
+
+  // Visual primary + visual companion
+  if (isVisual(primary) && isVisual(companion)) return 'DUAL_VISUAL';
 
   // Visual primary + note companion
   if (isVisual(primary) && isText(companion)) return 'VISUAL_WITH_CAPTION';
@@ -146,18 +163,8 @@ function renderItem(item: MediaItem): HTMLElement {
       wrap.appendChild(meta);
       break;
     }
-    case 'youtube': {
-      const c = item.content as { youtubeId: string; title: string };
-      const iframe = document.createElement('iframe');
-      iframe.className = 'media-item__youtube';
-      iframe.dataset['youtubeId'] = c.youtubeId;
-      iframe.allow = 'autoplay; fullscreen';
-      iframe.setAttribute('frameborder', '0');
-      iframe.title = c.title;
-      wrap.appendChild(iframe);
-      break;
-    }
   }
+    // youtube: primary slot uses ytHolder directly — renderItem is not called for youtube
   return wrap;
 }
 
@@ -201,10 +208,19 @@ export class SceneEngine {
   private ytPlayer:   YTPlayer | null = null;
   private ytWatchdog: ReturnType<typeof setTimeout> | null = null;
   private ytItem:     MediaItem | null = null;
+  // Persistent container — never destroyed, only moved between primary slots
+  private ytHolder:   HTMLElement | null = null;
 
   mount(layer: HTMLElement): void {
     this.layer = layer;
     this.mounted = true;
+
+    this.ytHolder = document.createElement('div');
+    this.ytHolder.className = 'media-item media-item--youtube';
+    this.ytHolder.style.cssText = 'display:none;min-width:0;min-height:0';
+    // Appended once and never removed — detaching an iframe reloads it
+    layer.appendChild(this.ytHolder);
+
     this.applyLayout('IDLE');
   }
 
@@ -316,35 +332,32 @@ export class SceneEngine {
   }
 
   private renderSlots(): void {
-    // Remove all existing slots
+    // Remove all existing slots — ytHolder is NOT a slot, it stays in the layer permanently
     this.layer.querySelectorAll('.jam-slot').forEach(s => s.remove());
 
     const layout = this.currentLayout;
     const primary = this._primary;
     const companion = this._companion;
 
-    if (layout === 'IDLE' || !primary) return;
-
-    const primarySlot = this.slot('primary');
-    primarySlot.appendChild(renderItem(primary));
-    this.layer.appendChild(primarySlot);
-
-    if (layout === 'MEDIA_FULL') {
-      this.mountYoutube(primary);
+    if (layout === 'IDLE' || !primary) {
+      // Hide ytHolder but keep it in the DOM (detaching an iframe reloads it)
+      if (this.ytHolder) this.ytHolder.style.display = 'none';
       return;
     }
 
-    if (layout === 'MEDIA_WITH_CAPTION') {
-      const cap = this.slot('caption');
-      cap.appendChild(companion ? renderCaption(companion) : renderCaption(primary));
-      this.layer.appendChild(cap);
-      this.mountYoutube(primary);
-      return;
+    if (primary.type === 'youtube') {
+      // ytHolder IS the primary grid item — show it, no slot needed
+      this.ytHolder!.style.display = '';
+    } else {
+      if (this.ytHolder) this.ytHolder.style.display = 'none';
+      const primarySlot = this.slot('primary');
+      primarySlot.appendChild(renderItem(primary));
+      this.layer.appendChild(primarySlot);
     }
 
-    if (layout === 'VISUAL_FULL' || layout === 'NOTE_CARD') return;
+    if (layout === 'MEDIA_FULL' || layout === 'VISUAL_FULL' || layout === 'NOTE_CARD') return;
 
-    if (layout === 'VISUAL_WITH_CAPTION') {
+    if (layout === 'MEDIA_WITH_CAPTION' || layout === 'VISUAL_WITH_CAPTION') {
       const cap = this.slot('caption');
       cap.appendChild(companion ? renderCaption(companion) : renderCaption(primary));
       this.layer.appendChild(cap);
@@ -355,7 +368,23 @@ export class SceneEngine {
       const compSlot = this.slot('secondary');
       compSlot.appendChild(renderItem(companion));
       this.layer.appendChild(compSlot);
-      this.mountYoutube(primary);
+      return;
+    }
+
+    if (layout === 'MEDIA_VIS_CAP' && companion) {
+      const visSlot = this.slot('secondary');
+      visSlot.appendChild(renderItem(companion));
+      this.layer.appendChild(visSlot);
+      const capSlot = this.slot('caption');
+      capSlot.appendChild(renderCaption(companion));
+      this.layer.appendChild(capSlot);
+      return;
+    }
+
+    if (layout === 'DUAL_VISUAL' && companion) {
+      const compSlot = this.slot('secondary');
+      compSlot.appendChild(renderItem(companion));
+      this.layer.appendChild(compSlot);
       return;
     }
   }
@@ -369,27 +398,67 @@ export class SceneEngine {
   // ── YouTube singleton ─────────────────────────────────────────────────────
 
   private mountYoutube(item: MediaItem): void {
-    if (!this.mounted || item.type !== 'youtube') return;
+    if (!this.mounted || item.type !== 'youtube' || !this.ytHolder) return;
     const c = item.content as { youtubeId: string; title: string };
-    const iframe = this.layer.querySelector<HTMLIFrameElement>('.media-item__youtube');
-    if (!iframe) return;
+
+    // Set/refresh the watchdog for a new video.
+    // This covers both "API not yet ready" and "player stalls" — one watchdog for both.
+    const currentVideoId = this.ytItem?.type === 'youtube'
+      ? (this.ytItem.content as { youtubeId: string }).youtubeId
+      : null;
+    if (currentVideoId !== c.youtubeId) {
+      if (this.ytWatchdog) clearTimeout(this.ytWatchdog);
+      this.ytWatchdog = setTimeout(() => {
+        this.ytWatchdog = null;
+        if (!this.mounted) return;
+        try {
+          if (!this.ytPlayer || this.ytPlayer.getPlayerState() !== YT.PlayerState.PLAYING) {
+            const skipped = item;
+            this._primary = null;
+            this.clearCompanion();
+            this.recompose();
+            this.onSceneEnd?.(skipped);
+          }
+        } catch {
+          const skipped = item;
+          this._primary = null;
+          this.clearCompanion();
+          this.recompose();
+          this.onSceneEnd?.(skipped);
+        }
+      }, ENGINE_CONFIG.YT_WATCHDOG);
+    }
+
+    // Defer player creation until the IFrame API is ready.
+    if (!ytApiReady) {
+      ytPendingCallbacks.push(() => {
+        if (this.mounted && this._primary?.id === item.id) this.mountYoutube(item);
+      });
+      return;
+    }
 
     // Reuse player if same video, else reload
     if (this.ytPlayer && this.ytItem?.type === 'youtube') {
       const oldId = (this.ytItem.content as { youtubeId: string }).youtubeId;
       if (oldId === c.youtubeId) return; // same video — nothing to do
       try { this.ytPlayer.loadVideoById(c.youtubeId); }
-      catch { this.destroyYoutube(); this.createYoutube(iframe, c.youtubeId, item); }
+      catch { this.destroyYoutube(); this.createYoutube(c.youtubeId, item); }
     } else {
       this.destroyYoutube();
-      this.createYoutube(iframe, c.youtubeId, item);
+      this.createYoutube(c.youtubeId, item);
     }
     this.ytItem = item;
   }
 
-  private createYoutube(iframe: HTMLIFrameElement, videoId: string, item: MediaItem): void {
+  private createYoutube(videoId: string, item: MediaItem): void {
+    // Recreate a fresh placeholder inside ytHolder (YT.Player will replace it with an iframe)
+    this.ytHolder!.innerHTML = '';
+    const placeholder = document.createElement('div');
+    this.ytHolder!.appendChild(placeholder);
+
+    // Watchdog is set in mountYoutube before this call — no need to set it here.
     try {
-      this.ytPlayer = new YT.Player(iframe, {
+      this.ytPlayer = new YT.Player(placeholder, {
         height: '100%', width: '100%',
         videoId,
         playerVars: { autoplay: 1, controls: 0, rel: 0, modestbranding: 1, playsinline: 1 },
@@ -406,34 +475,9 @@ export class SceneEngine {
           },
         },
       });
-
-      // Watchdog: skip if not PLAYING after YT_WATCHDOG ms
-      if (this.ytWatchdog) { clearTimeout(this.ytWatchdog); }
-      this.ytWatchdog = setTimeout(() => {
-        this.ytWatchdog = null;
-        if (!this.mounted) return;
-        try {
-          if (this.ytPlayer && this.ytPlayer.getPlayerState() !== YT.PlayerState.PLAYING) {
-            const skipped = item;
-            this._primary = null;
-            this.clearCompanion();
-            this.recompose();
-            this.onSceneEnd?.(skipped);
-          }
-        } catch {
-          const skipped = item;
-          this._primary = null;
-          this.clearCompanion();
-          this.recompose();
-          this.onSceneEnd?.(skipped);
-        }
-      }, ENGINE_CONFIG.YT_WATCHDOG);
-    } catch {
-      // YT API not available
-      const skipped = item;
-      this._primary = null;
-      this.recompose();
-      this.onSceneEnd?.(skipped);
+    } catch (err) {
+      // YT.Player constructor failed — watchdog will fire after YT_WATCHDOG ms and skip the item.
+      console.error('[scene-engine] YT.Player creation failed:', err);
     }
   }
 

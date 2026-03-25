@@ -1,0 +1,1085 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>MiniRégie TV — jam-mode (intégré)</title>
+  <link
+    rel="stylesheet"
+    href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,300;0,9..144,400;1,9..144,300;1,9..144,400&family=Schibsted+Grotesk:ital,wght@0,400;0,500;0,700;1,400;1,500&display=swap"
+  />
+
+  <style>
+    /* ==========================================================================
+       JAM-MODE BROADCAST — Stylesheet
+       Methodology : ITCSS (Harry Roberts) + Atomic Design (Brad Frost)
+       Naming      : BEM
+       ========================================================================== */
+
+    /* --------------------------------------------------------------------------
+       1. SETTINGS — Design tokens
+       -------------------------------------------------------------------------- */
+
+    :root {
+      /* Brand */
+      --s-color-brand:              #1ac0d7;
+      --s-color-brand-dark:         #107c9d;
+
+      /* Surfaces */
+      --s-color-bg:                 #08090b;
+      --s-color-bg-chrome:          rgba(8, 8, 10, 0.93);   /* ticker + lt-block backdrop */
+
+      /* Ink — white-on-dark, opacity-based hierarchy */
+      --s-color-ink-100:            rgba(255, 255, 255, 0.90);
+      --s-color-ink-72:             rgba(255, 255, 255, 0.72);
+      --s-color-ink-60:             rgba(255, 255, 255, 0.60);
+      --s-color-ink-35:             rgba(255, 255, 255, 0.35);
+      --s-color-ink-22:             rgba(255, 255, 255, 0.22);
+      --s-color-ink-18:             rgba(255, 255, 255, 0.18);
+      --s-color-ink-12:             rgba(255, 255, 255, 0.12);
+
+      /* Rules / borders */
+      --s-color-rule-soft:          rgba(255, 255, 255, 0.08);
+      --s-color-rule-mark:          rgba(255, 255, 255, 0.14);
+
+      /* Typography */
+      --s-font-display:             'Fraunces', serif;            /* noms propres uniquement — lower-third + auteur note */
+      --s-font-editorial:           'Schibsted Grotesk', sans-serif; /* tout le reste */
+      --s-fw-regular:               400;
+      --s-fw-medium:                500;
+      --s-fw-bold:                  700;
+
+      /* Type scale — fluid clamp values */
+      --s-fz-2xs:  clamp(5px,  0.65vw, 6.5px);
+      --s-fz-xs:   clamp(5px,  0.72vw, 7px);
+      --s-fz-sm:   clamp(6px,  1.00vw, 9px);
+      --s-fz-md:   clamp(7px,  1.40vw, 12px);
+      --s-fz-lg:   clamp(7.5px,1.45vw, 13px);
+      --s-fz-xl:   clamp(18px, 3.20vw, 30px);
+
+      /* Spacing */
+      --s-space-unit:    2.2%;
+      --s-space-inner:   calc(var(--s-space-unit) * 1.5);
+
+      /* Chrome heights — used to position lower-third above ticker */
+      --s-h-ticker:      clamp(18px, 3.2%, 26px);
+
+      /* Transition durations */
+      --s-dur-wipe-out:         240ms;
+      --s-dur-wipe-out-cross:   460ms;
+      --s-dur-wipe-in:          400ms;
+      --s-dur-wipe-in-cross:    460ms;
+      --s-dur-geom:             680ms;
+      --s-dur-cross-overlap:    120ms;
+      --s-dur-stagger:          65ms;
+      --s-dur-pause:            40ms;
+    }
+
+    /* --------------------------------------------------------------------------
+       2. GENERIC — Reset & box-model
+       -------------------------------------------------------------------------- */
+
+    *, *::before, *::after {
+      box-sizing: border-box;
+      margin:     0;
+      padding:    0;
+    }
+
+    /* --------------------------------------------------------------------------
+       3. ELEMENTS
+       -------------------------------------------------------------------------- */
+
+    html, body {
+      background: #111;
+      color:      var(--s-color-ink-100);
+    }
+
+    /* --------------------------------------------------------------------------
+       4. OBJECTS — Layout skeletons
+       -------------------------------------------------------------------------- */
+
+    .o-broadcast {
+      position:     relative;
+      width:        100%;
+      aspect-ratio: 16 / 9;
+      overflow:     hidden;
+    }
+
+    .o-layout-area {
+      position: absolute;
+      inset:    0;
+    }
+
+    .o-slot {
+      position: absolute;
+      overflow: hidden;
+    }
+
+    .o-slot__fill {
+      position: absolute;
+      inset:    0;
+    }
+
+    .o-stack {
+      display:        flex;
+      flex-direction: column;
+      align-items:    flex-start;
+    }
+
+    .o-stack--center { align-items: center; }
+
+    /* --------------------------------------------------------------------------
+       5. ATOMS
+       -------------------------------------------------------------------------- */
+
+    .a-dot {
+      width:         5px;
+      height:        5px;
+      border-radius: 50%;
+      flex-shrink:   0;
+      background:    var(--s-color-brand);
+      animation:     a-pulse 2.4s ease-in-out infinite;
+    }
+
+    .a-dot--sm { width: 4px; height: 4px; }
+
+    .a-rule {
+      width:       16px;
+      height:      1px;
+      flex-shrink: 0;
+      background:  rgba(255, 255, 255, 0.18);
+    }
+
+    .a-label--system {
+      font-family:    var(--s-font-editorial);
+      font-size:      var(--s-fz-xs);
+      font-weight:    var(--s-fw-regular);
+      color:          var(--s-color-ink-22);
+      letter-spacing: 0.10em;
+    }
+
+    .a-label--ghost {
+      font-family:    var(--s-font-editorial);
+      font-size:      var(--s-fz-2xs);
+      color:          var(--s-color-ink-12);
+      letter-spacing: 0.10em;
+    }
+
+    .a-label--photo {
+      font-family:    var(--s-font-editorial);
+      font-size:      var(--s-fz-2xs);
+      color:          var(--s-color-ink-18);
+      letter-spacing: 0.12em;
+      text-align:     center;
+      line-height:    2;
+      text-transform: uppercase;
+    }
+
+    .a-timer {
+      font-family:    var(--s-font-editorial);
+      font-size:      var(--s-fz-xl);
+      font-weight:    var(--s-fw-regular);
+      color:          rgba(255, 255, 255, 0.82);
+      letter-spacing: 0.02em;
+      line-height:    1;
+    }
+
+    .a-text--editorial {
+      font-family: var(--s-font-editorial);
+      font-size:   var(--s-fz-sm);
+      font-weight: var(--s-fw-regular);
+      color:       var(--s-color-ink-35);
+      line-height: 1.5;
+    }
+
+    .a-text--quote {
+      font-family:    var(--s-font-editorial);
+      font-size:      var(--s-fz-xl);
+      font-weight:    var(--s-fw-regular);
+      font-style:     normal;
+      color:          rgba(255, 255, 255, 0.88);
+      line-height:    1.5;
+      letter-spacing: -0.01em;
+    }
+
+    .a-text--eyebrow {
+      font-family:    var(--s-font-editorial);
+      font-size:      var(--s-fz-xs);
+      color:          rgba(255, 255, 255, 0.42);
+      letter-spacing: 0.14em;
+      text-transform: uppercase;
+    }
+
+    /**
+     * a-text--author
+     * Nom de l'auteur — nom propre, identité humaine.
+     * Fraunces 300 romain : plus léger que le corps, crée la hiérarchie par le poids.
+     */
+    .a-text--author {
+      font-family:    var(--s-font-display);
+      font-size:      var(--s-fz-md);
+      font-weight:    300;
+      font-style:     normal;
+      color:          rgba(255, 255, 255, 0.65);
+      letter-spacing: 0.01em;
+      line-height:    1;
+    }
+
+    .a-text--team {
+      font-family:    var(--s-font-editorial);
+      font-size:      var(--s-fz-xs);
+      color:          rgba(255, 255, 255, 0.38);
+      letter-spacing: 0.10em;
+      text-transform: uppercase;
+    }
+
+    .a-rec-label {
+      font-family:    var(--s-font-editorial);
+      font-size:      var(--s-fz-xs);
+      color:          var(--s-color-ink-22);
+      letter-spacing: 0.16em;
+    }
+
+    .a-photo-frame {
+      border:   1px solid var(--s-color-rule-soft);
+      display:  flex;
+      align-items:   center;
+      justify-content: center;
+      position: relative;
+      transition: width 700ms, height 700ms;
+    }
+
+    .a-photo-frame::after {
+      content:      '';
+      position:     absolute;
+      top:          -5px;
+      right:        -5px;
+      width:        9px;
+      height:       9px;
+      border-top:   1px solid var(--s-color-rule-mark);
+      border-right: 1px solid var(--s-color-rule-mark);
+    }
+
+    .a-photo-frame--large { width: 80% !important; height: 80% !important; }
+
+    /* --------------------------------------------------------------------------
+       6. MOLECULES
+       -------------------------------------------------------------------------- */
+
+    .m-rec-indicator {
+      display:     flex;
+      align-items: center;
+      gap:         6px;
+    }
+
+    .m-note-attribution {
+      display:        flex;
+      flex-direction: column;
+      gap:            3px;
+    }
+
+    /* --------------------------------------------------------------------------
+       7. ORGANISMS
+       -------------------------------------------------------------------------- */
+
+    .c-broadcast-screen {
+      background:    var(--s-color-bg);
+      border-radius: 2px;
+    }
+
+    .c-slot-video {
+      background:      var(--s-color-bg);
+      display:         flex;
+      flex-direction:  column;
+      align-items:     center;
+      justify-content: center;
+      gap:             10px;
+    }
+
+    .c-slot-photo {
+      background:      var(--s-color-bg);
+      display:         flex;
+      align-items:     center;
+      justify-content: center;
+    }
+
+    .c-slot-photo .a-photo-frame { width: 62%; height: 68%; }
+
+    .c-slot-note {
+      background:      var(--s-color-bg);
+      display:         flex;
+      flex-direction:  column;
+      justify-content: center;
+      padding:
+        0
+        var(--s-space-unit)
+        0
+        var(--s-space-inner);
+    }
+
+    .c-slot-note--full {
+      padding:     12% calc(var(--s-space-unit) * 2);
+      align-items: center;
+      text-align:  center;
+    }
+
+    .c-slot-note--full .a-rule { margin-left: auto; margin-right: auto; }
+
+    .c-slot-note .o-stack  { gap: clamp(8px, 1.6vh, 14px); }
+    .c-slot-note .a-rule   { margin-top: clamp(10px, 1.8vh, 18px); margin-bottom: clamp(10px, 1.8vh, 18px); }
+
+    /* ── c-ticker ──────────────────────────────────────────────────────────────
+       Bandeau défilant en bas de l'écran.
+       Palette stricte : une seule surface colorée (le flag brand).
+       Tout le reste est neutre — dégradé de blanc sur fond presque noir.
+       ──────────────────────────────────────────────────────────────────────── */
+
+    .c-ticker {
+      position:   absolute;
+      bottom:     var(--s-space-unit);
+      left:       var(--s-space-unit);
+      right:      var(--s-space-unit);
+      height:     var(--s-h-ticker);
+      background: var(--s-color-bg-chrome);
+      display:    flex;
+      align-items: stretch;
+      overflow:   hidden;
+      /* Ticker absent par défaut — JS le rend visible quand il y a contenu */
+      opacity:    0;
+      pointer-events: none;
+    }
+
+    .c-ticker--visible {
+      opacity: 1;
+      pointer-events: auto;
+    }
+
+    /* Flag réseau — UNIQUE surface colorée du ticker */
+    .c-ticker__flag {
+      flex-shrink:    0;
+      background:     var(--s-color-brand);
+      display:        flex;
+      align-items:    center;
+      padding:        0 clamp(6px, 0.9vw, 10px);
+      font-family:    var(--s-font-editorial);
+      font-size:      var(--s-fz-xs);
+      font-weight:    var(--s-fw-bold);
+      letter-spacing: 0.13em;
+      text-transform: uppercase;
+      color:          rgba(0, 0, 0, 0.72);
+      white-space:    nowrap;
+    }
+
+    /* Bloc horloge — fond identique au ticker, séparé par une règle fine */
+    .c-ticker__clock {
+      flex-shrink:  0;
+      display:      flex;
+      align-items:  center;
+      justify-content: center;
+      padding:      0 clamp(8px, 1vw, 12px);
+      border-right: 0.5px solid var(--s-color-rule-soft);
+      position:     relative;
+      min-width:    clamp(60px, 7vw, 84px);
+      overflow:     hidden;
+    }
+
+    .c-ticker__clock-val {
+      font-family:    var(--s-font-editorial);
+      font-size:      var(--s-fz-xs);
+      font-weight:    var(--s-fw-bold);
+      color:          var(--s-color-ink-60);
+      letter-spacing: 0.08em;
+      white-space:    nowrap;
+      position:       absolute;
+    }
+
+    /* Zone de défilement */
+    .c-ticker__scroll {
+      flex:     1;
+      overflow: hidden;
+      display:  flex;
+      align-items: center;
+    }
+
+    .c-ticker__track {
+      display:     flex;
+      align-items: center;
+      white-space: nowrap;
+      will-change: transform;
+    }
+
+    .c-ticker__item {
+      font-family:    var(--s-font-editorial);
+      font-size:      var(--s-fz-xs);
+      color:          var(--s-color-ink-72);
+      letter-spacing: 0.04em;
+      padding:        0 clamp(14px, 1.8vw, 22px);
+    }
+
+    /* Séparateur entre items — neutre, pas coloré */
+    .c-ticker__sep {
+      font-family: var(--s-font-editorial);
+      font-size:   var(--s-fz-xs);
+      color:       var(--s-color-ink-22);
+      flex-shrink: 0;
+    }
+
+    /* ── c-lower-third ─────────────────────────────────────────────────────────
+       Rectangle blanc flottant, calqué sur le traitement NYT.
+       Fraunces 400 pour le nom (moment éditorial).
+       Schibsted Grotesk pour le rôle (métadonnée).
+       Positionné juste au-dessus du ticker quand celui-ci est visible.
+       ──────────────────────────────────────────────────────────────────────── */
+
+    .c-lower-third {
+      position: absolute;
+      /* bottom calculé dynamiquement par JS selon présence du ticker */
+      left:     var(--s-space-unit);
+      z-index:  20;
+      display:  flex;
+      flex-direction: column;
+      align-items: flex-start;
+    }
+
+    /* Tag équipe — même accent que le flag du ticker : cohérence visuelle */
+    .c-lower-third__label {
+      display:     inline-block;
+      background:  var(--s-color-brand);
+      padding:     clamp(2px, 0.3vw, 4px) clamp(6px, 0.8vw, 9px);
+      /* Initialement masqué — wipe reveal via GSAP */
+      clip-path:   inset(0 100% 0 0);
+      margin-bottom: 3px;
+    }
+
+    .c-lower-third__label span {
+      font-family:    var(--s-font-editorial);
+      font-size:      var(--s-fz-xs);
+      font-weight:    var(--s-fw-bold);
+      letter-spacing: 0.13em;
+      text-transform: uppercase;
+      color:          rgba(0, 0, 0, 0.72);  /* cohérent avec c-ticker__flag */
+      line-height:    1;
+      display:        block;
+    }
+
+    /* Bloc blanc — contient nom (Fraunces) + rôle (Schibsted Grotesk) */
+    .c-lower-third__block {
+      background: #fff;
+      padding:
+        clamp(6px, 0.9vw, 10px)
+        clamp(10px, 1.4vw, 16px)
+        clamp(7px, 1vw, 11px);
+      clip-path: inset(0 100% 0 0);
+    }
+
+    .c-lower-third__name {
+      font-family:    var(--s-font-display);     /* Fraunces 400 */
+      font-size:      clamp(12px, 2vw, 21px);
+      font-weight:    400;
+      font-style:     normal;
+      color:          #0a0a0a;
+      line-height:    1.1;
+      letter-spacing: 0.01em;
+    }
+
+    .c-lower-third__role {
+      font-family:    var(--s-font-editorial);      /* Schibsted Grotesk */
+      font-size:      var(--s-fz-xs);
+      font-weight:    var(--s-fw-regular);
+      color:          #686868;
+      letter-spacing: 0.10em;
+      text-transform: uppercase;
+      margin-top:     clamp(2px, 0.3vw, 4px);
+      line-height:    1;
+    }
+
+    /* --------------------------------------------------------------------------
+       8. UTILITIES
+       -------------------------------------------------------------------------- */
+
+    .u-clipped   { clip-path: inset(0 0% 0 100%); }
+    .u-sr-only   { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0,0,0,0); white-space: nowrap; border: 0; }
+
+    /* --------------------------------------------------------------------------
+       KEYFRAMES
+       -------------------------------------------------------------------------- */
+
+    @keyframes a-pulse {
+      0%, 100% { opacity: 1;    }
+      50%       { opacity: 0.15; }
+    }
+
+    /* --------------------------------------------------------------------------
+       DEMO — Page scaffolding (hors système broadcast)
+       -------------------------------------------------------------------------- */
+
+    .demo {
+      max-width:   960px;
+      margin:      0 auto;
+      padding:     24px 16px;
+      font-family: var(--s-font-editorial);
+    }
+
+    .demo__controls { margin-top: 12px; }
+
+    .demo__label {
+      font-size:      9px;
+      color:          var(--s-color-ink-35);
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+      margin-bottom:  6px;
+    }
+
+    .demo__row {
+      display:   flex;
+      flex-wrap: wrap;
+      gap:       4px;
+      margin-bottom: 6px;
+    }
+
+    .demo__btn {
+      font-family:    var(--s-font-editorial);
+      font-size:      9px;
+      padding:        5px 9px;
+      background:     transparent;
+      border:         0.5px solid rgba(255, 255, 255, 0.15);
+      border-radius:  3px;
+      cursor:         pointer;
+      color:          rgba(255, 255, 255, 0.45);
+      letter-spacing: 0.04em;
+      transition:     background 100ms, border-color 100ms, color 100ms;
+      line-height:    1;
+    }
+
+    .demo__btn:hover {
+      background:   rgba(255, 255, 255, 0.06);
+      border-color: rgba(255, 255, 255, 0.35);
+      color:        rgba(255, 255, 255, 0.85);
+    }
+
+    .demo__btn--active {
+      background:   rgba(26, 192, 215, 0.10);
+      border-color: rgba(26, 192, 215, 0.45);
+      color:        #1ac0d7;
+    }
+
+    .demo__btn--lt-active {
+      background:   rgba(255, 255, 255, 0.08);
+      border-color: rgba(255, 255, 255, 0.35);
+      color:        rgba(255, 255, 255, 0.85);
+    }
+  </style>
+</head>
+
+<body>
+  <div class="demo">
+
+    <!-- ═══════════════════════════════════════════════════
+         BROADCAST SCREEN
+         ═══════════════════════════════════════════════════ -->
+    <div class="o-broadcast c-broadcast-screen" id="js-broadcast">
+
+      <!-- Layout area — slots -->
+      <div class="o-layout-area" id="js-layout-area">
+
+        <!-- Slot YouTube / vidéo principale -->
+        <div class="o-slot u-clipped" id="js-slot-yt" aria-label="Video slot">
+          <div class="o-slot__fill c-slot-video">
+            <div class="m-rec-indicator">
+              <div class="a-dot" aria-hidden="true"></div>
+              <span class="a-rec-label">EN DIRECT</span>
+            </div>
+            <div class="a-timer" id="js-yt-timer">0:00</div>
+            <div class="a-label--ghost" id="js-yt-meta">NODE #1 · UPTIME 0:00<br>JAMAIS RECRÉÉ</div>
+          </div>
+        </div>
+
+        <!-- Slot Photo / GIF / clip -->
+        <div class="o-slot u-clipped" id="js-slot-visual" aria-label="Visual slot">
+          <div class="o-slot__fill c-slot-photo">
+            <div class="a-photo-frame" id="js-photo-frame">
+              <div class="a-label--photo">PHOTO<br>@participant<br>ÉQUIPE 7</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Slot Note / caption -->
+        <div class="o-slot u-clipped" id="js-slot-caption" aria-label="Caption slot">
+          <div class="o-slot__fill c-slot-note" id="js-note-content">
+            <div class="a-text--eyebrow">Note · il y a 3 min</div>
+            <div class="a-text--quote">"On observe quelque chose de difficile à nommer ici."</div>
+            <div class="m-note-attribution">
+              <span class="a-text--author">@participant</span>
+              <span class="a-text--team">Équipe 4 · IAD</span>
+            </div>
+          </div>
+        </div>
+
+      </div><!-- /o-layout-area -->
+
+      <!-- ═══════════════════════════════════════════════════
+           COUCHE PERSISTANTE
+           Vit au-dessus des slots. Jamais touchée par les
+           transitions de layout.
+           ═══════════════════════════════════════════════════ -->
+
+      <!-- Lower third -->
+      <div class="c-lower-third" id="js-lt" aria-live="polite">
+        <div class="c-lower-third__label" id="js-lt-label">
+          <span id="js-lt-team">Équipe 7</span>
+        </div>
+        <div class="c-lower-third__block" id="js-lt-block">
+          <div class="c-lower-third__name" id="js-lt-name">Marie Dupont</div>
+          <div class="c-lower-third__role" id="js-lt-role">Consultante senior en procrastination</div>
+        </div>
+      </div>
+
+      <!-- Ticker -->
+      <div class="c-ticker" id="js-ticker" aria-live="off" aria-atomic="false">
+        <div class="c-ticker__flag">M4TV</div>
+        <div class="c-ticker__clock" id="js-ticker-clock">
+          <span class="c-ticker__clock-val" id="js-clock-a">14:22</span>
+          <span class="c-ticker__clock-val" id="js-clock-b" style="opacity:0;">T−36:00:00</span>
+        </div>
+        <div class="c-ticker__scroll">
+          <div class="c-ticker__track" id="js-ticker-track">
+            <span class="c-ticker__item">Des sources proches du café confirment une situation tendue dans la salle B</span>
+            <span class="c-ticker__sep">·</span>
+            <span class="c-ticker__item">12 créations partagées depuis le début de la JAM</span>
+            <span class="c-ticker__sep">·</span>
+            <span class="c-ticker__item">Le compilateur de l'équipe 4 a demandé l'asile politique</span>
+            <span class="c-ticker__sep">·</span>
+            <span class="c-ticker__item">Il reste 36h avant le freeze</span>
+            <span class="c-ticker__sep">·</span>
+            <span class="c-ticker__item">Des sources proches du café confirment une situation tendue dans la salle B</span>
+            <span class="c-ticker__sep">·</span>
+            <span class="c-ticker__item">12 créations partagées depuis le début de la JAM</span>
+            <span class="c-ticker__sep">·</span>
+            <span class="c-ticker__item">Le compilateur de l'équipe 4 a demandé l'asile politique</span>
+            <span class="c-ticker__sep">·</span>
+            <span class="c-ticker__item">Il reste 36h avant le freeze</span>
+            <span class="c-ticker__sep">·</span>
+          </div>
+        </div>
+      </div>
+
+    </div><!-- /o-broadcast -->
+
+    <!-- ─ Demo controls ────────────────────────────────── -->
+    <div class="demo__controls">
+      <div class="demo__label">layout</div>
+      <div class="demo__row" id="js-controls"></div>
+      <div class="demo__label" style="margin-top:8px;">chrome persistant</div>
+      <div class="demo__row">
+        <button class="demo__btn" id="btn-lt">lower third ↓</button>
+        <button class="demo__btn" id="btn-ticker">ticker on/off</button>
+    </div>
+
+  </div><!-- /demo -->
+
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/gsap.min.js"></script>
+
+  <script>
+    'use strict';
+
+    /* ──────────────────────────────────────────────────────
+       MODULE 1 — LayoutRegistry
+       ────────────────────────────────────────────────────── */
+    const LayoutRegistry = (() => {
+      const _layouts = {
+        IDLE:                { yt: null,                           visual: null,                        caption: null,                         dual: false },
+        MEDIA_FULL:          { yt: { t:0, l:0,    w:1,    h:1 }, visual: null,                        caption: null,                         dual: false },
+        VISUAL_FULL:         { yt: null,                           visual: { t:0, l:0,    w:1,    h:1 }, caption: null,                       dual: false },
+        NOTE_CARD:           { yt: null,                           visual: null,                        caption: { t:0, l:0,    w:1,    h:1 }, dual: false },
+        MEDIA_WITH_CAPTION:  { yt: { t:0, l:0,    w:0.68, h:1 }, visual: null,                        caption: { t:0, l:0.68, w:0.32, h:1 }, dual: false },
+        MEDIA_WITH_VISUAL:   { yt: { t:0, l:0,    w:0.62, h:1 }, visual: { t:0, l:0.62, w:0.38, h:1 }, caption: null,                       dual: false },
+        VISUAL_WITH_CAPTION: { yt: null,                           visual: { t:0, l:0,    w:0.66, h:1 }, caption: { t:0, l:0.66, w:0.34, h:1 }, dual: false },
+        MEDIA_VIS_CAP:       { yt: { t:0, l:0,    w:0.52, h:1 }, visual: { t:0, l:0.52, w:0.27, h:1 }, caption: { t:0, l:0.79, w:0.21, h:1 }, dual: false },
+        DUAL_VISUAL:         { yt: null,                           visual: { t:0, l:0,    w:0.50, h:1 }, caption: { t:0, l:0.50, w:0.50, h:1 }, dual: true  },
+      };
+
+      return {
+        get:    (name) => _layouts[name],
+        names:  ()     => Object.keys(_layouts),
+        isFull: (rect) => rect !== null && rect.w === 1 && rect.h === 1,
+      };
+    })();
+
+    /* ──────────────────────────────────────────────────────
+       MODULE 2 — TransitionEngine (GSAP)
+       ────────────────────────────────────────────────────── */
+    const TransitionEngine = (() => {
+      const _ms  = (token) => parseFloat(getComputedStyle(document.documentElement).getPropertyValue(token)) || 0;
+
+      const D = {
+        wipeOut:      _ms('--s-dur-wipe-out')      / 1000,
+        wipeOutCross: _ms('--s-dur-wipe-out-cross') / 1000,
+        wipeIn:       _ms('--s-dur-wipe-in')        / 1000,
+        wipeInCross:  _ms('--s-dur-wipe-in-cross')  / 1000,
+        geom:         _ms('--s-dur-geom')           / 1000,
+        crossOverlap: _ms('--s-dur-cross-overlap')  / 1000,
+        stagger:      _ms('--s-dur-stagger')        / 1000,
+        pause:        _ms('--s-dur-pause')          / 1000,
+      };
+
+      const E = { geom: 'expo.out', leave: 'power2.in', arrive: 'expo.out', cross: 'power2.inOut' };
+      const Clip = { OPEN: 'inset(0 0% 0 0%)', CLOSE_LEFT: 'inset(0 100% 0 0%)', CLOSE_RIGHT: 'inset(0 0% 0 100%)' };
+      let _activeTl = null;
+
+      const _rectToVars    = (r) => ({ top: `${r.t*100}%`, left: `${r.l*100}%`, width: `${r.w*100}%`, height: `${r.h*100}%` });
+      const _byLeftAsc     = (a, b) => (a.rect?.l    ?? 0) - (b.rect?.l    ?? 0);
+      const _byLeftDesc    = (a, b) => (b.prevRect?.l ?? 0) - (a.prevRect?.l ?? 0);
+
+      return {
+        reset(el) {
+          gsap.set(el, { clipPath: Clip.CLOSE_RIGHT, top: '0%', left: '0%', width: '100%', height: '100%' });
+        },
+
+        crossWipe(leaveEl, arriveEl, arriveRect, onDone) {
+          gsap.set(arriveEl, { ..._rectToVars(arriveRect), clipPath: Clip.CLOSE_RIGHT });
+          _activeTl = gsap.timeline({ onComplete: onDone })
+            .to(leaveEl,  { clipPath: Clip.CLOSE_LEFT, duration: D.wipeOutCross, ease: E.cross })
+            .to(arriveEl, { clipPath: Clip.OPEN,       duration: D.wipeInCross,  ease: E.cross }, `<+=${D.crossOverlap}`);
+        },
+
+        sequence(leaving, staying, arriving, onDone) {
+          const leaveOrder  = [...leaving ].sort(_byLeftDesc);
+          const stayOrder   = [...staying ].sort(_byLeftAsc);
+          const arriveOrder = [...arriving].sort(_byLeftAsc);
+
+          arriveOrder.forEach((s) => gsap.set(s.el, { ..._rectToVars(s.rect), clipPath: Clip.CLOSE_RIGHT }));
+
+          _activeTl = gsap.timeline({ onComplete: onDone });
+
+          if (leaveOrder.length) {
+            leaveOrder.forEach((s, i) => {
+              _activeTl.to(s.el, { clipPath: Clip.CLOSE_LEFT, duration: D.wipeOut, ease: E.leave },
+                i === 0 ? undefined : `<+=${D.stagger}`);
+            });
+          }
+
+          const geomPos = leaveOrder.length ? `>+=${D.pause}` : 0;
+          stayOrder.forEach((s, i) => {
+            _activeTl.to(s.el, { ..._rectToVars(s.rect), duration: D.geom, ease: E.geom },
+              i === 0 ? geomPos : `<+=${D.stagger}`);
+          });
+
+          const wipeInOffset = stayOrder.length > 0 ? D.stagger * 1.5 : 0;
+          const wipeInAnchor = stayOrder.length > 0 ? `geomStart+=${wipeInOffset}` : geomPos;
+          if (stayOrder.length > 0) _activeTl.addLabel('geomStart', geomPos);
+
+          arriveOrder.forEach((s, i) => {
+            _activeTl.to(s.el, { clipPath: Clip.OPEN, duration: D.wipeIn, ease: E.arrive },
+              i === 0 ? (stayOrder.length > 0 ? `geomStart+=${wipeInOffset}` : geomPos) : `<+=${D.stagger}`);
+          });
+
+          if (!leaveOrder.length && !stayOrder.length && !arriveOrder.length) {
+            _activeTl.kill();
+            onDone();
+          }
+        },
+
+        get activeTl() { return _activeTl; },
+      };
+    })();
+
+    /* ──────────────────────────────────────────────────────
+       MODULE 3 — BroadcastController
+       ────────────────────────────────────────────────────── */
+    const BroadcastController = (() => {
+      const _el = {
+        slotYt:      document.getElementById('js-slot-yt'),
+        slotVisual:  document.getElementById('js-slot-visual'),
+        slotCaption: document.getElementById('js-slot-caption'),
+        photoFrame:  document.getElementById('js-photo-frame'),
+        noteContent: document.getElementById('js-note-content'),
+      };
+
+      const _state = {
+        yt:      { el: _el.slotYt,      visible: false, rect: null },
+        visual:  { el: _el.slotVisual,  visible: false, rect: null },
+        caption: { el: _el.slotCaption, visible: false, rect: null },
+      };
+
+      let _busy = false;
+
+      const _syncContentModes = (layout) => {
+        const isFullNote = !layout.yt && !layout.visual && !!layout.caption;
+        _el.noteContent.classList.toggle('c-slot-note--full', isFullNote);
+        _el.photoFrame.classList.toggle('a-photo-frame--large', !!layout.dual);
+      };
+
+      return {
+        init() { Object.values(_state).forEach((s) => TransitionEngine.reset(s.el)); },
+
+        go(name) {
+          if (_busy) return;
+          const layout = LayoutRegistry.get(name);
+          if (!layout) return;
+          _busy = true;
+
+          const next     = { yt: layout.yt, visual: layout.visual, caption: layout.caption };
+          const leaving  = [];
+          const staying  = [];
+          const arriving = [];
+
+          Object.entries(_state).forEach(([key, s]) => {
+            const n = next[key];
+            if  (s.visible &&  n) staying .push({ el: s.el, rect: n });
+            else if (s.visible && !n) leaving .push({ el: s.el, prevRect: s.rect });
+            else if (!s.visible && n) arriving.push({ el: s.el, rect: n });
+          });
+
+          _syncContentModes(layout);
+
+          const _commit = () => {
+            Object.keys(_state).forEach((k) => {
+              _state[k].visible = next[k] !== null;
+              _state[k].rect    = next[k] ?? null;
+            });
+            _busy = false;
+          };
+
+          const leavingFull  = leaving .filter((s) => { const k = Object.keys(_state).find((k) => _state[k].el === s.el); return LayoutRegistry.isFull(_state[k]?.rect); });
+          const arrivingFull = arriving.filter((s) => LayoutRegistry.isFull(s.rect));
+          const isCrossWipe  = leavingFull.length === 1 && arrivingFull.length === 1 && staying.length === 0;
+
+          if (isCrossWipe) {
+            TransitionEngine.crossWipe(leavingFull[0].el, arrivingFull[0].el, arrivingFull[0].rect, _commit);
+          } else {
+            TransitionEngine.sequence(leaving, staying, arriving, _commit);
+          }
+        },
+      };
+    })();
+
+    /* ──────────────────────────────────────────────────────
+       MODULE 4 — PersistentChrome
+       Ticker + Lower-third.
+       Totalement indépendant du BroadcastController.
+       ────────────────────────────────────────────────────── */
+    const PersistentChrome = (() => {
+
+      /* ── DOM refs ─────────────────────────────────────── */
+      const _ticker = document.getElementById('js-ticker');
+      const _track  = document.getElementById('js-ticker-track');
+      const _clockA = document.getElementById('js-clock-a');
+      const _clockB = document.getElementById('js-clock-b');
+      const _lt     = document.getElementById('js-lt');
+      const _ltLabel = document.getElementById('js-lt-label');
+      const _ltBlock = document.getElementById('js-lt-block');
+
+      /* ── État ─────────────────────────────────────────── */
+      let _tickerVisible = false;
+      let _tickerTl      = null;
+      let _ltVisible     = false;
+      let _clockAlt      = false;  /* alterne heure / T− */
+
+      /* ── Constantes QR ────────────────────────────────── */
+
+      const JAM_DURATION_MS = 48 * 60 * 60 * 1000;
+      const _jamStart = new Date(Date.now() - 12 * 60 * 60 * 1000); /* simulation : JAM démarrée il y a 12h */
+
+      /* ── Helpers horloge ──────────────────────────────── */
+      const _pad = (n) => String(n).padStart(2, '0');
+
+      function _currentTime() {
+        const n = new Date();
+        return `${_pad(n.getHours())}:${_pad(n.getMinutes())}`;
+      }
+
+      function _remaining() {
+        const ms = Math.max(0, JAM_DURATION_MS - (Date.now() - _jamStart.getTime()));
+        const h  = Math.floor(ms / 3600000);
+        const m  = Math.floor((ms % 3600000) / 60000);
+        const s  = Math.floor((ms % 60000) / 1000);
+        return `T−${_pad(h)}:${_pad(m)}:${_pad(s)}`;
+      }
+
+      /* ── Ticker scroll ────────────────────────────────── */
+      function _startTickerScroll() {
+        if (_tickerTl) { _tickerTl.kill(); _tickerTl = null; }
+        /* Le track est dupliqué dans le HTML pour la boucle.
+           On calcule la largeur d'une moitié et on boucle dessus. */
+        const halfWidth = _track.scrollWidth / 2;
+        _tickerTl = gsap.to(_track, {
+          x:        -halfWidth,
+          duration: halfWidth / 55,   /* vitesse : 55px/s — comparable Al Jazeera */
+          ease:     'none',
+          repeat:   -1,
+          modifiers: { x: gsap.utils.unitize((x) => parseFloat(x) % halfWidth) },
+        });
+      }
+
+      /* ── Oscillation horloge ──────────────────────────── */
+      function _oscillateClock() {
+        _clockA.textContent = _currentTime();
+        _clockB.textContent = _remaining();
+
+        const out = _clockAlt ? _clockA : _clockB;  /* élément visible → sort */
+        const inn = _clockAlt ? _clockB : _clockA;  /* élément caché  → entre */
+
+        gsap.to(out, { opacity: 0, y: -4, duration: 0.22, ease: 'power2.in' });
+        gsap.fromTo(inn, { opacity: 0, y: 4 }, { opacity: 1, y: 0, duration: 0.22, ease: 'power2.out', delay: 0.14 });
+        _clockAlt = !_clockAlt;
+      }
+
+      /* ── Positionnement du lower-third ────────────────── */
+      function _updateLtPosition() {
+        /* Gap fixe entre LT et le dessus du ticker (ou le bas du frame si pas de ticker) */
+        const gap = 6;
+        const tickerH  = _tickerVisible ? _ticker.offsetHeight  : 0;
+        const spaceUnit = _ticker.offsetLeft; /* réutilise la même marge que le ticker */
+        _lt.style.bottom = `calc(${spaceUnit}px + ${tickerH}px + ${gap}px)`;
+      }
+
+      /* ── API publique ─────────────────────────────────── */
+      return {
+
+        init() {
+          /* État initial des horloges */
+          _clockA.textContent = _currentTime();
+          _clockB.textContent = _remaining();
+          gsap.set(_clockA, { opacity: 1, y: 0 });
+          gsap.set(_clockB, { opacity: 0, y: 0 });
+
+          /* Mises à jour périodiques */
+          setInterval(() => {
+            _clockA.textContent = _currentTime();
+            _clockB.textContent = _remaining();
+          }, 1000);
+          setInterval(_oscillateClock, 5000);
+
+          _updateLtPosition();
+        },
+
+        tickerShow() {
+          _tickerVisible = true;
+          _ticker.classList.add('c-ticker--visible');
+          _startTickerScroll();
+          _updateLtPosition();
+        },
+
+        tickerHide() {
+          _tickerVisible = false;
+          _ticker.classList.remove('c-ticker--visible');
+          if (_tickerTl) { _tickerTl.kill(); _tickerTl = null; }
+          _updateLtPosition();
+        },
+
+        tickerToggle() {
+          _tickerVisible ? this.tickerHide() : this.tickerShow();
+        },
+
+        /**
+         * Affiche le lower-third avec une animation wipe.
+         * @param {{ name:string, role:string, team:string }} data
+         */
+        ltShow(data) {
+          if (data) {
+            document.getElementById('js-lt-name').textContent = data.name  ?? '';
+            document.getElementById('js-lt-role').textContent = data.role  ?? '';
+            document.getElementById('js-lt-team').textContent = data.team  ?? '';
+          }
+
+          _updateLtPosition();
+          _ltVisible = true;
+
+          gsap.timeline()
+            .to(_ltLabel, { clipPath: 'inset(0 0% 0 0)',  duration: 0.22, ease: 'power2.out' })
+            .to(_ltBlock,  { clipPath: 'inset(0 0% 0 0)',  duration: 0.38, ease: 'power2.out' }, '-=0.06');
+        },
+
+        ltHide() {
+          _ltVisible = false;
+          gsap.timeline()
+            .to(_ltBlock,  { clipPath: 'inset(0 100% 0 0)', duration: 0.28, ease: 'power2.in' })
+            .to(_ltLabel, { clipPath: 'inset(0 100% 0 0)',  duration: 0.18, ease: 'power2.in' }, '-=0.06')
+            .set([_ltLabel, _ltBlock], { clipPath: 'inset(0 100% 0 0)' });
+        },
+
+        ltToggle() {
+          _ltVisible ? this.ltHide() : this.ltShow(null);
+        },
+
+    /* ──────────────────────────────────────────────────────
+       CLOCK — uptime vidéo slot (inchangé)
+       ────────────────────────────────────────────────────── */
+    const Clock = (() => {
+      const _t0  = Date.now();
+      const _pad = (n) => String(n).padStart(2, '0');
+      const _elapsed = (s) => `${Math.floor(s / 60)}:${_pad(s % 60)}`;
+      return {
+        start() {
+          const ytTimer = document.getElementById('js-yt-timer');
+          const ytMeta  = document.getElementById('js-yt-meta');
+          setInterval(() => {
+            const s = Math.floor((Date.now() - _t0) / 1000);
+            ytTimer.textContent = _elapsed(s);
+            ytMeta.textContent  = `NODE #1 · UPTIME ${_elapsed(s)}\nJAMAIS RECRÉÉ`;
+          }, 1000);
+        },
+      };
+    })();
+
+    /* ──────────────────────────────────────────────────────
+       DEMO — Scaffolding
+       ────────────────────────────────────────────────────── */
+    const Demo = (() => ({
+      init() {
+        /* Layout buttons */
+        const container = document.getElementById('js-controls');
+        LayoutRegistry.names().forEach((name) => {
+          const btn = document.createElement('button');
+          btn.className      = 'demo__btn';
+          btn.dataset.layout = name;
+          btn.textContent    = name.replace(/_/g, ' ');
+          btn.addEventListener('click', () => {
+            BroadcastController.go(name);
+            document.querySelectorAll('.demo__btn[data-layout]').forEach((b) =>
+              b.classList.toggle('demo__btn--active', b.dataset.layout === name));
+          });
+          container.appendChild(btn);
+        });
+
+        /* Lower-third toggle */
+        const btnLt = document.getElementById('btn-lt');
+        btnLt.addEventListener('click', () => {
+          PersistentChrome.ltToggle();
+          btnLt.classList.toggle('demo__btn--lt-active');
+          btnLt.textContent = btnLt.classList.contains('demo__btn--lt-active')
+            ? 'lower third ↑' : 'lower third ↓';
+        });
+
+        /* Ticker toggle */
+        const btnTicker = document.getElementById('btn-ticker');
+        btnTicker.addEventListener('click', () => {
+          PersistentChrome.tickerToggle();
+          btnTicker.classList.toggle('demo__btn--lt-active');
+        });
+
+        /* QR toggle */
+      },
+    }))();
+
+    /* ──────────────────────────────────────────────────────
+       BOOT
+       ────────────────────────────────────────────────────── */
+    (() => {
+      BroadcastController.init();
+      Clock.start();
+      PersistentChrome.init();
+      Demo.init();
+
+      /* Ticker activé par défaut */
+      PersistentChrome.tickerShow();
+      document.getElementById('btn-ticker').classList.add('demo__btn--lt-active');
+
+      /* Layout initial */
+      requestAnimationFrame(() =>
+        setTimeout(() => BroadcastController.go('MEDIA_FULL'), 120)
+      );
+    })();
+  </script>
+</body>
+</html>

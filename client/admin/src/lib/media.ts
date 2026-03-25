@@ -22,6 +22,18 @@ export const TYPE_LABEL: Record<string, string> = {
   interview: 'intv',
 };
 
+export const LAYOUT_LABEL: Record<string, string> = {
+  IDLE:                          'idle',
+  MEDIA_FULL:                    'media full',
+  MEDIA_WITH_VISUAL:             'media + visual',
+  MEDIA_WITH_CAPTION:            'media + note',
+  MEDIA_VIS_CAP:                 'media + visual + note',
+  VISUAL_FULL:                   'visual full',
+  VISUAL_WITH_CAPTION:           'visual + note',
+  NOTE_CARD:                     'note card',
+  DUAL_VISUAL:                   'dual visual',
+};
+
 export function itemLabel(item: MediaItem, maxLen = 80): string {
   const c = item.content as Record<string, unknown>;
   if (typeof c.text    === 'string') return c.text.slice(0, maxLen);

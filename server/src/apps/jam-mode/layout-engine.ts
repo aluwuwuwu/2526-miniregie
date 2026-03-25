@@ -7,7 +7,7 @@ export type LayoutName =
   | 'NOTE_CARD'
   | 'MEDIA_WITH_VISUAL'
   | 'MEDIA_WITH_CAPTION'
-  | 'MEDIA_WITH_VISUAL_AND_CAPTION'
+  | 'MEDIA_VIS_CAP'
   | 'VISUAL_WITH_CAPTION'
   | 'DUAL_VISUAL';
 
@@ -41,7 +41,7 @@ export function resolveLayout(activeItems: Item[]): LayoutName {
 
   // Two items — first is youtube
   if (activeItems.length === 2 && a!.type === 'youtube') {
-    if (isVisual(b!)) return hasCaption(b!.content) ? 'MEDIA_WITH_VISUAL_AND_CAPTION' : 'MEDIA_WITH_VISUAL';
+    if (isVisual(b!)) return hasCaption(b!.content) ? 'MEDIA_VIS_CAP' : 'MEDIA_WITH_VISUAL';
     if (isText(b!))   return 'MEDIA_WITH_CAPTION';
   }
 
@@ -53,7 +53,7 @@ export function resolveLayout(activeItems: Item[]): LayoutName {
 
   // Three items — youtube + visual + note
   if (activeItems.length === 3 && a!.type === 'youtube' && isVisual(b!) && isText(c!)) {
-    return 'MEDIA_WITH_VISUAL_AND_CAPTION';
+    return 'MEDIA_VIS_CAP';
   }
 
   return 'IDLE';

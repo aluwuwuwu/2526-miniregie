@@ -64,10 +64,10 @@ describe('resolveLayout — youtube + text → MEDIA_WITH_CAPTION', () => {
   it('[youtube, link(no-thumb)]', () => expect(resolveLayout([youtube(), linkNoThumb()])).toBe('MEDIA_WITH_CAPTION'));
 });
 
-describe('resolveLayout — youtube + visual + note → MEDIA_WITH_VISUAL_AND_CAPTION', () => {
-  it('[youtube, photo, note]', () => expect(resolveLayout([youtube(), photo(), note()])).toBe('MEDIA_WITH_VISUAL_AND_CAPTION'));
-  it('[youtube, gif, note]',   () => expect(resolveLayout([youtube(), gif(), note()])).toBe('MEDIA_WITH_VISUAL_AND_CAPTION'));
-  it('[youtube, clip, note]',  () => expect(resolveLayout([youtube(), clip(), note()])).toBe('MEDIA_WITH_VISUAL_AND_CAPTION'));
+describe('resolveLayout — youtube + visual + note → MEDIA_VIS_CAP', () => {
+  it('[youtube, photo, note]', () => expect(resolveLayout([youtube(), photo(), note()])).toBe('MEDIA_VIS_CAP'));
+  it('[youtube, gif, note]',   () => expect(resolveLayout([youtube(), gif(), note()])).toBe('MEDIA_VIS_CAP'));
+  it('[youtube, clip, note]',  () => expect(resolveLayout([youtube(), clip(), note()])).toBe('MEDIA_VIS_CAP'));
 });
 
 describe('resolveLayout — visual + note → VISUAL_WITH_CAPTION', () => {
@@ -104,11 +104,11 @@ describe('resolveLayout — single item with caption', () => {
 });
 
 describe('resolveLayout — youtube + visual with caption', () => {
-  it('[youtube, photo + caption] → MEDIA_WITH_VISUAL_AND_CAPTION', () => {
-    expect(resolveLayout([youtube(), photo('Nice')])).toBe('MEDIA_WITH_VISUAL_AND_CAPTION');
+  it('[youtube, photo + caption] → MEDIA_VIS_CAP', () => {
+    expect(resolveLayout([youtube(), photo('Nice')])).toBe('MEDIA_VIS_CAP');
   });
 
-  it('[youtube, gif + caption] → MEDIA_WITH_VISUAL_AND_CAPTION', () => {
-    expect(resolveLayout([youtube(), gif('Lol')])).toBe('MEDIA_WITH_VISUAL_AND_CAPTION');
+  it('[youtube, gif + caption] → MEDIA_VIS_CAP', () => {
+    expect(resolveLayout([youtube(), gif('Lol')])).toBe('MEDIA_VIS_CAP');
   });
 });

@@ -11,6 +11,8 @@
     item: MediaItem;
     activeIds: string[];
     onMutate: () => void;
+    position?: number;           // display position number in queue (optional)
+    locked?: boolean;            // true when item is on-air — disables drag
     // Drag-and-drop
     isDragging?:    boolean;
     dropIndicator?: 'above' | 'below' | null;
@@ -19,7 +21,7 @@
     onDrop?:        () => void;
     onDragEnd?:     () => void;
   }
-  const { item, activeIds, onMutate, isDragging, dropIndicator, onDragStart, onDragOver, onDrop, onDragEnd }: Props = $props();
+  const { item, activeIds, onMutate, position, locked = false, isDragging, dropIndicator, onDragStart, onDragOver, onDrop, onDragEnd }: Props = $props();
 
   // ─── Derived state ────────────────────────────────────────────────────────────
 
@@ -149,11 +151,12 @@
 <article
   class="queue-item"
   class:queue-item--on-air={isOnAir}
+  class:queue-item--locked={locked}
   class:queue-item--dragging={isDragging}
   class:queue-item--drop-above={dropIndicator === 'above'}
   class:queue-item--drop-below={dropIndicator === 'below'}
-  draggable="true"
-  ondragstart={(e) => { e.dataTransfer?.setData('text/plain', item.id); onDragStart?.(item.id); }}
+  draggable={!locked}
+  ondragstart={(e) => { if (locked) return; e.dataTransfer?.setData('text/plain', item.id); onDragStart?.(item.id); }}
   ondragover={(e) => { e.preventDefault(); const r = (e.currentTarget as HTMLElement).getBoundingClientRect(); onDragOver?.(item.id, e.clientY < r.top + r.height / 2); }}
   ondrop={(e) => { e.preventDefault(); onDrop?.(); }}
   ondragend={onDragEnd}
@@ -161,7 +164,10 @@
   <!-- ─── Header ─────────────────────────────────────────────────────────────── -->
   <div class="queue-item__header">
 
-    <span class="queue-item__grip" aria-hidden="true"></span>
+    {#if position !== undefined}
+      <span class="queue-item__position">{position}</span>
+    {/if}
+    <span class="queue-item__grip" aria-hidden="true" class:queue-item__grip--hidden={locked}></span>
 
     <span
       class="queue-item__type"
@@ -265,7 +271,17 @@
   }
 
   .queue-item:hover       { background: var(--bg-hover); }
+
+  .queue-item__position {
+    font-family: var(--font-mono);
+    font-size: var(--font-size-xs);
+    color: var(--text-dim);
+    min-width: 16px;
+    text-align: right;
+    flex-shrink: 0;
+  }
   .queue-item--on-air     { border-left-color: var(--live); }
+  .queue-item--locked     { cursor: default; }
   .queue-item--dragging   { opacity: 0.35; }
 
   /* Drop insertion indicators */
@@ -299,6 +315,7 @@
 
   .queue-item:hover .queue-item__grip { opacity: 1; }
   .queue-item--dragging .queue-item__grip { cursor: grabbing; opacity: 1; }
+  .queue-item__grip--hidden { visibility: hidden; }
 
   .queue-item__type {
     font-size: var(--font-size-sm);
