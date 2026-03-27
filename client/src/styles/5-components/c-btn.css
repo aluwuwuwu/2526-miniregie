@@ -1,0 +1,8 @@
+.c-btn {
+	padding: var(--space-xs) var(--space-sm);
+	cursor: pointer;
+}
+
+.c-btn:disabled {
+	cursor: not-allowed;
+}

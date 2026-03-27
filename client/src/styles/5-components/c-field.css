@@ -1,0 +1,14 @@
+.c-field {
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-xs);
+}
+
+.c-field__label {
+	display: block;
+}
+
+.c-field__input {
+	width: 100%;
+	padding: var(--space-xs) var(--space-sm);
+}

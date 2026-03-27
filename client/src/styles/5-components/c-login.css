@@ -1,0 +1,19 @@
+.c-login {
+	width: 100%;
+	max-width: 320px;
+	padding: var(--space-lg);
+}
+
+.c-login__title {
+	margin-block-end: var(--space-lg);
+}
+
+.c-login__form {
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-md);
+}
+
+.c-login__error {
+	margin: 0;
+}

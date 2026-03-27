@@ -40,9 +40,6 @@ broadcastRef = broadcast;
 
 const UPLOAD_DIR = process.env['UPLOAD_DIR'] ?? './uploads';
 app.use('/uploads', express.static(UPLOAD_DIR));
-app.use('/admin',   express.static('client/admin/dist'));
-app.use('/go',      express.static('client/go/dist'));
-app.use('/',        express.static('client/broadcast/dist'));
 
 // ─── Routes ───────────────────────────────────────────────────────────────────
 
