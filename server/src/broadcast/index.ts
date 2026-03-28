@@ -1,35 +1,43 @@
-import { readFileSync, writeFileSync, existsSync, renameSync } from 'node:fs';
-import { writeFile, rename } from 'node:fs/promises';
 import { randomUUID } from 'node:crypto';
-import type { Server, Socket } from 'socket.io';
-import { shouldFire, parseScheduleEntry } from './triggers.js';
+import type { Server } from 'socket.io';
 import { validateJamTransition } from './jam-state.js';
-import { insertBroadcastEvent, resetAllMedia, getScheduleEntries, markScheduleEntryFired, resetScheduleStatus } from '../db/queries.js';
-import type { GlobalState, LimitTrigger, MarketTrigger, AppId, JamStatus, MediaItem } from '../../../shared/types.js';
-import { resolveLayout } from '../apps/jam-mode/layout-engine.js';
+import { insertBroadcastEvent, resetAllMedia } from '../db/queries.js';
+import type { GlobalState, MarketTrigger, AppId, App } from "@shared/types";
 import type { PoolManager } from '../pool/index.js';
 import { getJamConfig } from '../jam-config.js';
+import { ScheduleService } from './schedule.js';
+import { loadState, buildInitialState, saveState, type PersistedState } from './persistence.js';
+import { AppManager } from '../apps/app-manager.js';
+import { JamModeApp } from '../apps/jam-mode/index.js';
 
-// ─── Types ────────────────────────────────────────────────────────────────────
-
-/** LimitTrigger extended with the DB row id for persistent fired tracking. */
-type DbLimitTrigger = LimitTrigger & { dbId: number };
-
-interface PersistedState {
-  jam:          GlobalState['jam'];
-  activeApp:    AppId;
-  panicState:   boolean;
-  panicMessage: string;
-}
+// ─── Constants ────────────────────────────────────────────────────────────────
 
 const STATE_FILE = 'state.json';
 const TICK_MS    = 1_000;
 
+// ─── App factory ─────────────────────────────────────────────────────────────
+
+function createApp(appId: AppId): App {
+  switch (appId) {
+    case 'jam-mode': return new JamModeApp();
+    default: return {
+      id: appId,
+      outroMode: 'none',
+      load:         () => {},
+      play:         () => {},
+      stop:         async () => {},
+      remove:       () => {},
+      onPoolUpdate: () => {},
+    };
+  }
+}
+
 // ─── BroadcastManager ─────────────────────────────────────────────────────────
 
 export class BroadcastManager {
-  private state:    GlobalState;
-  private schedule: DbLimitTrigger[];
+  private readonly state:    GlobalState;
+  private readonly schedule: ScheduleService;
+  private readonly apps:     AppManager;
 
   private readonly io:   Server;
   private readonly pool: PoolManager;
@@ -37,28 +45,28 @@ export class BroadcastManager {
   private tickInterval:    ReturnType<typeof setInterval> | null = null;
   private persistInterval: ReturnType<typeof setInterval> | null = null;
 
-  // Pool hold counter — incremented each time jam-mode enters hold regime
-  private holdCount = 0;
-
   // Transition coordination
-  private isTransitioning              = false;
-  private triggerQueue:                MarketTrigger[] = [];
-  private pendingTransitionResolve:    (() => void) | null = null;
+  private isTransitioning = false;
+  private triggerQueue:   MarketTrigger[] = [];
+
+  // Hold tracking (for pool stats)
+  private holdCount  = 0;
+  private wasHolding = false;
 
   private readonly cfg: ReturnType<typeof getJamConfig>['broadcast'];
 
   constructor(options: { io: Server; pool: PoolManager }) {
-    this.io   = options.io;
-    this.pool = options.pool;
-    this.cfg  = getJamConfig().broadcast;
-
-    this.schedule   = this.loadSchedule();
-    this.state      = this.loadOrInitState();
+    this.io       = options.io;
+    this.pool     = options.pool;
+    this.cfg      = getJamConfig().broadcast;
+    this.schedule = new ScheduleService();
+    this.apps     = new AppManager();
+    this.state    = loadState(STATE_FILE) ?? buildInitialState();
     this.state.pool = this.pool.getStats(); // populate from DB on startup
 
-    // Pre-compute so the first socket 'state' emit includes accurate predictions
-    this.state.broadcast.activeLayout   = this.computeActiveLayout();
-    this.state.broadcast.nextPrediction = this.computeNextPrediction();
+    // Layout and next prediction are computed server-side once the fetch loop exists
+    this.state.broadcast.activeLayout   = null;
+    this.state.broadcast.nextPrediction = null;
 
     this.setupSocketHandlers();
     this.setupPoolListeners();
@@ -80,8 +88,8 @@ export class BroadcastManager {
     return this.state;
   }
 
-  getSchedule(): ReadonlyArray<LimitTrigger> {
-    return this.schedule;
+  getSchedule(): ReturnType<ScheduleService['get']> {
+    return this.schedule.get();
   }
 
   /**
@@ -89,52 +97,15 @@ export class BroadcastManager {
    * Call this after any admin CRUD operation on schedule entries.
    */
   reloadSchedule(): void {
-    this.schedule = this.loadSchedule();
-  }
-
-  // Compute the absolute timestamp of the next unfired schedule trigger.
-  private computeNextTriggerAt(): number | null {
-    const jam = this.state.jam;
-    let earliest: number | null = null;
-
-    for (const trigger of this.schedule) {
-      if (trigger.fired) continue;
-
-      let absTime: number | null = null;
-      const c = trigger.condition;
-
-      if (c.at === 'absolute') {
-        absTime = new Date(c.value).getTime();
-      } else if (c.at === 'H+' && jam.startedAt !== null) {
-        absTime = jam.startedAt + c.value;
-      } else if (c.at === 'T-' && jam.endsAt !== null) {
-        absTime = jam.endsAt - c.value;
-      }
-
-      if (absTime !== null && (earliest === null || absTime < earliest)) {
-        earliest = absTime;
-      }
-    }
-
-    return earliest;
+    this.schedule.reload();
   }
 
   startJam(): void {
     const result = validateJamTransition(this.state.jam.status, 'running');
     if (!result.ok) throw new Error(result.error);
 
-    const endEntry = getScheduleEntries().find(e => e.app === 'end-of-countdown');
-    if (!endEntry) throw new Error('No end-of-countdown entry in schedule — add an absolute timestamp entry first');
-
-    const condition = parseScheduleEntry(endEntry.at);
-    if (condition.at === 'T-') throw new Error('end-of-countdown cannot use T- format (circular dependency on endsAt)');
-
     const startedAt = Date.now();
-    const endsAt = condition.at === 'absolute'
-      ? new Date(condition.value).getTime()
-      : startedAt + condition.value; // H+
-
-    if (isNaN(endsAt) || endsAt <= startedAt) throw new Error('end-of-countdown resolves to a past or invalid time');
+    const endsAt    = this.schedule.resolveJamEnd(startedAt);
 
     this.state.jam = { status: 'running', startedAt, endsAt, timeRemaining: endsAt - startedAt };
     this.logEvent('jam_state_change', { from: 'idle', to: 'running' });
@@ -176,54 +147,31 @@ export class BroadcastManager {
     this.emitState();
   }
 
-  /**
-   * Called by the broadcast client's jam-mode app whenever its active items or
-   * regime change.  Updates the shared GlobalState so the admin UI can observe
-   * what is currently on-air.
-   */
-  updateJamMode(activeItemIds: string[], regime: 'normal' | 'hold' | 'buffer'): void {
-    // Increment hold counter on each transition INTO hold
-    if (regime === 'hold' && this.state.broadcast.regime !== 'hold') {
-      this.holdCount++;
-    }
-    this.state.broadcast.activeItemIds = activeItemIds;
-    this.state.broadcast.regime        = regime;
-    this.emitState();
-  }
-
   reset(): void {
-    // Clear all media from DB
     resetAllMedia();
-
-    // Reset in-memory pool state
     this.pool.reset();
+    this.apps.reset();
 
-    // Reset JAM state machine
-    this.holdCount       = 0;
     this.state.jam       = { status: 'idle', startedAt: null, endsAt: null, timeRemaining: null };
-    this.state.broadcast = { activeApp: 'pre-jam-idle', transition: 'idle', panicState: false, panicMessage: '', nextTriggerAt: null, activeItemIds: [], regime: 'normal', activeLayout: null, nextPrediction: null };
+    this.state.broadcast = {
+      activeApp: 'pre-jam-idle', transition: 'idle', panicState: false, panicMessage: '',
+      nextTriggerAt: null, activeItemIds: [], regime: 'normal', activeLayout: null, nextPrediction: null,
+    };
 
-    // Reset all schedule entries in DB and reload so triggers can fire again
-    resetScheduleStatus();
-    this.schedule = this.loadSchedule();
+    this.schedule.resetAll();
 
-    // Clear any pending transition
     this.isTransitioning = false;
     this.triggerQueue    = [];
-    if (this.pendingTransitionResolve) {
-      this.pendingTransitionResolve();
-      this.pendingTransitionResolve = null;
-    }
-
     this.logEvent('jam_state_change', { from: 'reset', to: 'idle' });
-    this.persist();
+    void saveState(STATE_FILE, this.toPersistedState());
     this.emitState();
   }
 
   destroy(): void {
     if (this.tickInterval)    clearInterval(this.tickInterval);
     if (this.persistInterval) clearInterval(this.persistInterval);
-    this.persist();
+    this.apps.destroy();
+    void saveState(STATE_FILE, this.toPersistedState());
   }
 
   // ─── Transition engine ──────────────────────────────────────────────────────
@@ -235,12 +183,14 @@ export class BroadcastManager {
     }
 
     this.isTransitioning = true;
-    const fromApp = this.state.broadcast.activeApp;
+    const fromApp   = this.state.broadcast.activeApp;
     const startedAt = Date.now();
 
     this.state.broadcast.transition = 'in_progress';
     this.state.broadcast.activeApp  = trigger.appId;
     this.emitState();
+
+    await this.apps.transition(createApp(trigger.appId));
 
     // Wait for client ack or failsafe timeout
     await this.waitForTransitionAck();
@@ -264,16 +214,10 @@ export class BroadcastManager {
 
   private waitForTransitionAck(): Promise<void> {
     return new Promise<void>(resolve => {
-      const timeout = setTimeout(() => {
-        this.pendingTransitionResolve = null;
+      setTimeout(() => {
         this.logEvent('lifecycle_timeout', { method: 'transition', timeout_ms: this.cfg.transitionFailsafeMs });
         resolve();
       }, this.cfg.transitionFailsafeMs);
-
-      this.pendingTransitionResolve = () => {
-        clearTimeout(timeout);
-        resolve();
-      };
     });
   }
 
@@ -288,15 +232,10 @@ export class BroadcastManager {
     }
 
     // Evaluate limit triggers
-    const now = Date.now();
-    for (const trigger of this.schedule) {
-      if (trigger.fired) continue;
-      if (!shouldFire(trigger.condition, jam, now)) continue;
-
-      trigger.fired = true;
-      markScheduleEntryFired(trigger.dbId, now);
+    const toFire = this.schedule.evaluateTick(jam, Date.now());
+    for (const trigger of toFire) {
       this.logEvent('trigger_fired', { trigger });
-      this.dispatch({ type: 'market', appId: trigger.appId, source: 'system' });
+      this.dispatch(trigger);
     }
 
     // Emit timeRemaining only (lightweight tick)
@@ -307,7 +246,9 @@ export class BroadcastManager {
 
   private setupPoolListeners(): void {
     this.pool.on('update', () => {
-      this.state.pool = this.pool.getStats();
+      const isHolding = this.isJamModeHolding();
+      if (isHolding && !this.wasHolding) this.holdCount++;
+      this.wasHolding = isHolding;
       this.emitState();
     });
 
@@ -319,132 +260,36 @@ export class BroadcastManager {
   // ─── Socket.io handlers ─────────────────────────────────────────────────────
 
   private setupSocketHandlers(): void {
-    this.io.on('connection', (socket: Socket) => {
+    this.io.on('connection', (socket) => {
       // Send full state on connect
       socket.emit('state', this.state);
-
-      // Transition ack from broadcast client
-      socket.on('broadcast:transition:complete', () => {
-        if (this.pendingTransitionResolve) {
-          this.pendingTransitionResolve();
-          this.pendingTransitionResolve = null;
-        }
-      });
     });
   }
 
   // ─── State emission ─────────────────────────────────────────────────────────
 
+  private isJamModeHolding(): boolean {
+    return this.state.broadcast.activeApp === 'jam-mode'
+      && this.pool.getStats().readyCount === 0;
+  }
+
   private emitState(): void {
+    this.state.broadcast.activeItemIds = []; // populated once the server-side fetch loop exists
+    this.state.broadcast.regime        = this.isJamModeHolding() ? 'hold' : 'normal';
+    this.state.broadcast.nextTriggerAt = this.schedule.getNextTriggerAt(this.state.jam);
     this.state.pool = this.pool.getStats(this.holdCount);
-    this.state.broadcast.nextTriggerAt  = this.computeNextTriggerAt();
-    this.state.broadcast.activeLayout   = this.computeActiveLayout();
-    this.state.broadcast.nextPrediction = this.computeNextPrediction();
     this.io.emit('state', this.state);
   }
 
-  private computeActiveLayout(): string | null {
-    const { activeItemIds } = this.state.broadcast;
-    if (activeItemIds.length === 0) return null;
-    const snapshot = this.state.pool.queueSnapshot;
-    const items = activeItemIds
-      .map(id => snapshot.find(i => i.id === id))
-      .filter((i): i is MediaItem => i !== undefined);
-    return items.length > 0 ? resolveLayout(items) : null;
-  }
+  // ─── Persistence ─────────────────────────────────────────────────────────────
 
-  private computeNextPrediction(): GlobalState['broadcast']['nextPrediction'] {
-    const activeIds = new Set(this.state.broadcast.activeItemIds);
-    const remaining = this.state.pool.queueSnapshot
-      .filter(i => i.type !== 'ticker' && !activeIds.has(i.id));
-
-    if (remaining.length === 0) return null;
-
-    let selected: MediaItem[] = [remaining[0]!];
-
-    // Try pairing primary with companion
-    if (remaining.length >= 2) {
-      const two = resolveLayout([remaining[0]!, remaining[1]!]);
-      if (two !== 'IDLE') selected = [remaining[0]!, remaining[1]!];
-    }
-
-    // Youtube can take a third item (visual + note companion)
-    if (remaining.length >= 3 && remaining[0]!.type === 'youtube') {
-      const three = resolveLayout(remaining.slice(0, 3));
-      if (three !== 'IDLE') selected = remaining.slice(0, 3);
-    }
-
-    return { layout: resolveLayout(selected), itemIds: selected.map(i => i.id) };
-  }
-
-  // ─── Persistence ────────────────────────────────────────────────────────────
-
-  private loadOrInitState(): GlobalState {
-    try {
-      if (existsSync(STATE_FILE)) {
-        // NOTE: we no longer use the persisted schedule — fired state lives in DB.
-        // The in-memory schedule was already populated by loadSchedule() reading DB.
-        const raw       = readFileSync(STATE_FILE, 'utf-8');
-        const persisted = JSON.parse(raw) as PersistedState;
-
-        // Recalculate timeRemaining after restart
-        if (persisted.jam.status === 'running' && persisted.jam.endsAt !== null) {
-          persisted.jam.timeRemaining = Math.max(0, persisted.jam.endsAt - Date.now());
-        }
-
-        return {
-          jam:       persisted.jam,
-          broadcast: { activeApp: persisted.activeApp, transition: 'idle', panicState: persisted.panicState ?? false, panicMessage: persisted.panicMessage ?? '', nextTriggerAt: null, activeItemIds: [], regime: 'normal', activeLayout: null, nextPrediction: null },
-          pool:      { total: 0, queueSnapshot: [], byType: {}, holdCount: 0 },
-        };
-      }
-    } catch (err) {
-      console.warn('[broadcast] Failed to load state.json, starting fresh:', err);
-    }
-
+  private toPersistedState(): PersistedState {
     return {
-      jam:       { status: 'idle', startedAt: null, endsAt: null, timeRemaining: null },
-      broadcast: { activeApp: 'pre-jam-idle', transition: 'idle', panicState: false, panicMessage: '', nextTriggerAt: null, activeItemIds: [], regime: 'normal', activeLayout: null, nextPrediction: null },
-      pool:      { total: 0, queueSnapshot: [], byType: {}, holdCount: 0 },
-    };
-  }
-
-  private persist(): void {
-    // Schedule fired state is authoritative in DB — not persisted in state.json.
-    const data: PersistedState = {
       jam:          this.state.jam,
       activeApp:    this.state.broadcast.activeApp,
       panicState:   this.state.broadcast.panicState,
       panicMessage: this.state.broadcast.panicMessage,
     };
-    const json = JSON.stringify(data, null, 2);
-    const tmp  = `${STATE_FILE}.tmp`;
-    // Atomic write: write to .tmp then rename — prevents empty/corrupt state.json on crash
-    writeFile(tmp, json).then(() => rename(tmp, STATE_FILE)).catch(() => {
-      try { writeFileSync(tmp, json); renameSync(tmp, STATE_FILE); } catch { /* best effort */ }
-    });
-  }
-
-  // ─── Schedule loading ────────────────────────────────────────────────────────
-
-  private loadSchedule(): DbLimitTrigger[] {
-    const entries = getScheduleEntries();
-    return entries.flatMap(entry => {
-      // Skip already-fired entries — they must not re-trigger after a restart
-      if (entry.status === 'fired') return [];
-      try {
-        return [{
-          type:      'limit' as const,
-          condition: parseScheduleEntry(entry.at),
-          appId:     entry.app,
-          fired:     false,
-          dbId:      entry.id,
-        }];
-      } catch (err) {
-        console.warn(`[broadcast] Skipping schedule entry id=${entry.id} "${entry.at}": ${err}`);
-        return [];
-      }
-    });
   }
 
   // ─── Logging ─────────────────────────────────────────────────────────────────
@@ -462,6 +307,9 @@ export class BroadcastManager {
   }
 
   private startPersist(): void {
-    this.persistInterval = setInterval(() => this.persist(), this.cfg.statePersistIntervalMs);
+    this.persistInterval = setInterval(
+      () => void saveState(STATE_FILE, this.toPersistedState()),
+      this.cfg.statePersistIntervalMs,
+    );
   }
 }
