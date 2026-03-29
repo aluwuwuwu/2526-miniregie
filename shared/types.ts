@@ -256,6 +256,12 @@ export interface JamConfig {
   pool: {
     clipQuotaPerParticipant: number; // max clips per participant per JAM
   };
+  jamMode: {
+    photoDurationMs:     number; // ms — display duration for photo and gif slots
+    noteDurationMs:      number; // ms — display duration for note slots
+    liveStreamMaxMs:     number; // ms — fallback duration for YouTube live streams (duration = 0)
+    enrichCheckMs:       number; // ms — when loud plays alone, poll for companions at this interval
+  };
   client: {
     watchdogTimeoutMs: number; // ms — without server ping before broadcast client reloads
   };

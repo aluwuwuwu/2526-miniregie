@@ -12,6 +12,12 @@
     "clipQuotaPerParticipant": 3,
     "freshItemWindowMs": 900000
   },
+  "jamMode": {
+    "photoDurationMs": 20000,
+    "noteDurationMs": 12000,
+    "liveStreamMaxMs": 600000,
+    "enrichCheckMs": 15000
+  },
   "client": {
     "watchdogTimeoutMs": 30000
   }

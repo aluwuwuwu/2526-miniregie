@@ -28,6 +28,7 @@ export class JamModeApp extends BaseApp {
 
   private readonly pool: PoolManager;
   private readonly slotTimer: SlotTimer;
+  private enrichTimer: ReturnType<typeof setTimeout> | undefined;
 
   queues: JamModeQueues = { loud: [], visual: [], note: [], ticker: [] };
   layout: LayoutName    = 'IDLE';
@@ -52,6 +53,7 @@ export class JamModeApp extends BaseApp {
 
   async stop(): Promise<void> {
     this.slotTimer.clearAll();
+    this.clearEnrichTimer();
   }
 
   remove(): void {
@@ -89,6 +91,7 @@ export class JamModeApp extends BaseApp {
   //
   // Re-resolves layout + slots, reschedules timers only for slots that changed,
   // and emits the new layout to clients.
+  // After settling, starts an enrichment poll if the loud slot is playing alone.
 
   private applyLayout(): void {
     const prevSlots = this.slots;
@@ -113,6 +116,41 @@ export class JamModeApp extends BaseApp {
     }
 
     this.io.emit('jam-mode:layout', { layout: this.layout, slots: this.slots, timing });
+
+    // If the loud slot is playing alone, poll for companion content.
+    // Cancel any previous poll first so only one is ever pending.
+    this.clearEnrichTimer();
+    if (this.slots.loud && !this.slots.visual && !this.slots.note) {
+      this.scheduleEnrichCheck();
+    }
+  }
+
+  // ─── Enrichment poll ─────────────────────────────────────────────────────────
+  //
+  // When a video plays alone (MEDIA_FULL), check every enrichCheckMs whether
+  // visual or note items have become available. If yes, re-resolve with the
+  // loud slot locked — the video keeps playing but gains companions.
+  // If not yet, reschedule until the video's own timer fires.
+
+  private scheduleEnrichCheck(): void {
+    const { enrichCheckMs } = getJamConfig().jamMode;
+    this.enrichTimer = setTimeout(() => {
+      this.enrichTimer = undefined;
+      this.queues = this.fetchQueues();
+      if (this.queues.visual.length > 0 || this.queues.note.length > 0) {
+        this.applyLayout();
+      } else {
+        // Still nothing — keep polling
+        this.scheduleEnrichCheck();
+      }
+    }, enrichCheckMs);
+  }
+
+  private clearEnrichTimer(): void {
+    if (this.enrichTimer !== undefined) {
+      clearTimeout(this.enrichTimer);
+      this.enrichTimer = undefined;
+    }
   }
 
   private rescheduleTimers(prev: SlotAssignment, next: SlotAssignment): void {
