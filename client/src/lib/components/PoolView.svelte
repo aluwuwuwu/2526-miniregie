@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { serverState } from '$lib/server-state.svelte';
-	import { poolItems, fetchPoolItems, contentPreview, formatSubmittedAt } from '$lib/pool-items.svelte';
+	import { poolItems, fetchPoolItems, contentPreview, formatSubmittedAt, formatAR } from '$lib/pool-items.svelte';
 
 	const pool = $derived(serverState.state?.pool ?? null);
 	const activeItemIds = $derived(serverState.state?.broadcast?.activeItemIds ?? []);
@@ -32,6 +32,7 @@
 					<th>Type</th>
 					<th>Author</th>
 					<th class="c-pool__col-preview">Content</th>
+					<th>AR</th>
 					<th>Time</th>
 				</tr>
 			</thead>
@@ -47,6 +48,7 @@
 						<td class="c-pool__type">{item.type}</td>
 						<td class="c-pool__author">{item.author.displayName}</td>
 						<td class="c-pool__preview">{contentPreview(item)}</td>
+						<td class="c-pool__ar">{formatAR(item)}</td>
 						<td class="c-pool__time">{formatSubmittedAt(item.submittedAt)}</td>
 					</tr>
 				{/each}

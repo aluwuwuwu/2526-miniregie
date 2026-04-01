@@ -86,10 +86,10 @@ function extractAR(item: MediaItem | undefined): number | null {
 }
 
 function arFit(ar: number | null, range: AspectRange): number {
-  if (ar === null) return 1.0; // no data → neutral, no penalty
+  if (ar === null) return 0.15; // no AR data — allow with low probability (content may match)
   const inRange = (range.min === undefined || ar >= range.min)
                && (range.max === undefined || ar <= range.max);
-  return inRange ? 3.0 : 0.15;
+  return inRange ? 3.0 : 0; // known mismatch → never selected
 }
 
 function effectiveWeight(

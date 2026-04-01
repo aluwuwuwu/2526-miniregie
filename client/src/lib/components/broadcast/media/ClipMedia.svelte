@@ -30,10 +30,6 @@
 		loop
 		playsinline
 	></video>
-
-	{#if content.caption}
-		<p class="c-media-clip__caption">{content.caption}</p>
-	{/if}
 </div>
 
 <style>

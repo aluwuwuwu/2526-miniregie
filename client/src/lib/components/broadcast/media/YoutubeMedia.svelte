@@ -34,10 +34,6 @@
 		allow="autoplay; encrypted-media"
 		allowfullscreen
 	></iframe>
-
-	{#if content.caption}
-		<p class="c-media-youtube__caption">{content.caption}</p>
-	{/if}
 </div>
 
 <style>

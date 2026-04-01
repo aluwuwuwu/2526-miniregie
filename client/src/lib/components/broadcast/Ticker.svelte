@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { onMount, onDestroy } from 'svelte';
-	import { serverState } from '$lib/server-state.svelte';
+	import { serverState, emitTickerPass } from '$lib/server-state.svelte';
 	import type { TickerContent } from '@shared/types';
 
 	// ── Data ─────────────────────────────────────────────────────
@@ -9,6 +9,7 @@
 		serverState.state?.pool.queueSnapshot.filter(i => i.type === 'ticker') ?? []
 	);
 
+	const chyronActive = $derived(serverState.lowerThird !== null || serverState.slotChyron !== null);
 	const visible = $derived(tickerItems.length > 0);
 
 	// ── Clock ─────────────────────────────────────────────────────
@@ -41,6 +42,11 @@
 
 	let track: HTMLDivElement | undefined;
 
+	function onTickerPass(): void {
+		const ids = tickerItems.map(i => i.id);
+		if (ids.length > 0) emitTickerPass(ids);
+	}
+
 	$effect(() => {
 		// Depend on items so the effect re-runs when content changes
 		if (!track || tickerItems.length === 0) return;
@@ -50,7 +56,12 @@
 			const duration = (track.scrollWidth / 2) / 55;
 			track.style.setProperty('animation-duration', `${duration}s`);
 		});
-		return () => cancelAnimationFrame(rAF);
+		// animationiteration fires each time the scroll loop completes one full pass
+		track.addEventListener('animationiteration', onTickerPass);
+		return () => {
+			cancelAnimationFrame(rAF);
+			track?.removeEventListener('animationiteration', onTickerPass);
+		};
 	});
 
 	// ── Lifecycle ─────────────────────────────────────────────────
@@ -89,11 +100,11 @@
 	</div>
 
 	<!-- Scrolling text -->
-	<div class="c-ticker__scroll">
-		<div class="c-ticker__track" bind:this={track}>
+	<div class="c-ticker-scroll" class:hidden={chyronActive}>
+		<div class="c-ticker-track" bind:this={track}>
 			{#each [...tickerItems, ...tickerItems] as item, i (i)}
-				<span class="c-ticker__item">{(item.content as TickerContent).text}</span>
-				<span class="c-ticker__sep" aria-hidden="true">·</span>
+				<span class="c-ticker-track__item">{(item.content as TickerContent).text}</span>
+				<span class="c-ticker-track__sep" aria-hidden="true">·</span>
 			{/each}
 		</div>
 	</div>
@@ -114,6 +125,8 @@
 		align-items: stretch;
 		overflow: hidden;
 		z-index: 10;
+		font-family: var(--font-editorial, 'Schibsted Grotesk', sans-serif);
+		font-size: var(--broadcast-fz-xs, clamp(5px, 0.72vw, 7px));
 		/* Hidden by default — shown only when there is content */
 		opacity: 0;
 		pointer-events: none;
@@ -134,8 +147,6 @@
 		align-items: center;
 		gap: clamp(4px, 0.5vw, 6px);
 		padding: 0 clamp(6px, 0.9vw, 10px);
-		font-family: var(--font-editorial, 'Schibsted Grotesk', sans-serif);
-		font-size: var(--broadcast-fz-xs, clamp(5px, 0.72vw, 7px));
 		font-weight: var(--fw-bold, 700);
 		letter-spacing: 0.13em;
 		text-transform: uppercase;
@@ -169,8 +180,6 @@
 	}
 
 	.c-ticker__clock-val {
-		font-family: var(--font-editorial, 'Schibsted Grotesk', sans-serif);
-		font-size: var(--broadcast-fz-xs, clamp(5px, 0.72vw, 7px));
 		font-weight: var(--fw-bold, 700);
 		color: rgba(255, 255, 255, 0.60);
 		letter-spacing: 0.08em;
@@ -191,7 +200,7 @@
 	}
 
 	.c-ticker__clock-icon {
-		font-size: calc(var(--broadcast-fz-xs, clamp(5px, 0.72vw, 7px)) * 0.72);
+		font-size: 0.72em;
 		line-height: 1;
 		opacity: 0.8;
 	}
@@ -208,14 +217,16 @@
 
 	/* ── Scroll zone ─────────────────────────────────────────────── */
 
-	.c-ticker__scroll {
+	.c-ticker-scroll {
 		flex: 1;
 		overflow: hidden;
 		display: flex;
 		align-items: center;
+		max-width: 100%;
+		transition: max-width 400ms ease, opacity 400ms ease;
 	}
 
-	.c-ticker__track {
+	.c-ticker-track {
 		display: flex;
 		align-items: center;
 		white-space: nowrap;
@@ -224,18 +235,14 @@
 		animation: ticker-scroll 30s linear infinite;
 	}
 
-	.c-ticker__item {
-		font-family: var(--font-editorial, 'Schibsted Grotesk', sans-serif);
-		font-size: var(--broadcast-fz-xs, clamp(5px, 0.72vw, 7px));
+	.c-ticker-track__item {
 		color: rgba(255, 255, 255, 0.72);
 		letter-spacing: 0.04em;
 		padding: 0 clamp(14px, 1.8vw, 22px);
 	}
 
 	/* Separator between items — neutral, never colored */
-	.c-ticker__sep {
-		font-family: var(--font-editorial, 'Schibsted Grotesk', sans-serif);
-		font-size: var(--broadcast-fz-xs, clamp(5px, 0.72vw, 7px));
+	.c-ticker-track__sep {
 		color: rgba(255, 255, 255, 0.22);
 		flex-shrink: 0;
 	}

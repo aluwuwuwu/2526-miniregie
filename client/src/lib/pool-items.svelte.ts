@@ -41,8 +41,16 @@ export async function fetchPoolItems(): Promise<void> {
 	}
 }
 
+export function formatAR(item: MediaItem): string {
+	const c = item.content as unknown as Record<string, unknown>;
+	const ar = c['aspectRatio'];
+	if (typeof ar !== 'number' || ar <= 0) return '—';
+	const label = ar < 0.80 ? '↕' : ar > 1.80 ? '↔↔' : '↔';
+	return `${ar.toFixed(2)} ${label}`;
+}
+
 export function contentPreview(item: MediaItem): string {
-	const c = item.content as Record<string, unknown>;
+	const c = item.content as unknown as Record<string, unknown>;
 	if ('text' in c && typeof c.text === 'string') return c.text.slice(0, 100);
 	if ('title' in c && typeof c.title === 'string') return c.title.slice(0, 100);
 	if ('url' in c && typeof c.url === 'string') return (c.url as string).slice(0, 100);

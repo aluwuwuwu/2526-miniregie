@@ -348,6 +348,70 @@ export function applyDevSeed(): void {
       submittedAt: now - 1000 * 60 * 13,
       authorId:    pid('carla_note'),
     },
+    {
+      id:          randomUUID(),
+      type:        'giphy',
+      // Mind blown — landscape 16:9 (480×270)
+      content:     {
+        giphyId:     'xT0xeJpnrWC4XWblEk',
+        url:         'https://media.giphy.com/media/xT0xeJpnrWC4XWblEk/giphy.gif',
+        mp4Url:      'https://media.giphy.com/media/xT0xeJpnrWC4XWblEk/giphy.mp4',
+        title:       'Mind Blown',
+        aspectRatio: AR_16_9,
+        caption:     'Scène de l\'année',
+      },
+      status:      'ready',
+      submittedAt: now - 1000 * 60 * 31,
+      authorId:    pid('alice_photo'),
+    },
+    {
+      id:          randomUUID(),
+      type:        'giphy',
+      // Typing furiously — landscape 4:3 (480×360)
+      content:     {
+        giphyId:     'LmNwrBhejkK9EFP504',
+        url:         'https://media.giphy.com/media/LmNwrBhejkK9EFP504/giphy.gif',
+        mp4Url:      'https://media.giphy.com/media/LmNwrBhejkK9EFP504/giphy.mp4',
+        title:       'Typing Furiously',
+        aspectRatio: AR_4_3,
+        caption:     'Le monteur en pleine action',
+      },
+      status:      'ready',
+      submittedAt: now - 1000 * 60 * 47,
+      authorId:    pid('felix_mix'),
+    },
+    {
+      id:          randomUUID(),
+      type:        'giphy',
+      // We did it! — square (480×480)
+      content:     {
+        giphyId:     'kyLYXonQYYfwYDIeZl',
+        url:         'https://media.giphy.com/media/kyLYXonQYYfwYDIeZl/giphy.gif',
+        mp4Url:      'https://media.giphy.com/media/kyLYXonQYYfwYDIeZl/giphy.mp4',
+        title:       'We Did It',
+        aspectRatio: AR_1_1,
+        caption:     null,
+      },
+      status:      'ready',
+      submittedAt: now - 1000 * 60 * 9,
+      authorId:    pid('emma_cam'),
+    },
+    {
+      id:          randomUUID(),
+      type:        'giphy',
+      // Coffee loading — portrait 9:16 (270×480)
+      content:     {
+        giphyId:     'DrJm6F9poo4aA',
+        url:         'https://media.giphy.com/media/DrJm6F9poo4aA/giphy.gif',
+        mp4Url:      'https://media.giphy.com/media/DrJm6F9poo4aA/giphy.mp4',
+        title:       'Coffee Loading',
+        aspectRatio: AR_9_16,
+        caption:     'Ravitaillement en caféine',
+      },
+      status:      'ready',
+      submittedAt: now - 1000 * 60 * 66,
+      authorId:    pid('hugo_son'),
+    },
 
     // ── Clips ─────────────────────────────────────────────────────────────────
     // Only fake-clip-01, 02, 03 actually exist in /uploads

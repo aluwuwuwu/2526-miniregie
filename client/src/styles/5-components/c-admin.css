@@ -1,10 +1,50 @@
 .c-admin {
-	padding: var(--space-lg);
-	max-width: 640px;
+	padding: var(--space-md) var(--space-lg);
+	max-width: 1100px;
 }
 
 .c-admin__section {
 	margin-block-start: var(--space-lg);
+}
+
+c-admin__monitor{
+
+}
+
+/* ─── Topbar ────────────────────────────────────────────────────────────────── */
+
+.c-admin__topbar {
+	display: flex;
+	flex-wrap: wrap;
+	gap: var(--space-xl);
+	align-items: flex-start;
+	padding-block-end: var(--space-sm);
+	border-bottom: 1px solid rgba(0, 0, 0, 0.1);
+	margin-block-end: var(--space-md);
+}
+
+.c-admin__topbar .c-admin__section {
+	margin-block-start: 0;
+}
+
+/* ─── Monitor ───────────────────────────────────────────────────────────────── */
+
+.c-admin__monitor .c-broadcast-preview {
+	margin-block-start: 0;
+}
+
+/* ─── Panels row ────────────────────────────────────────────────────────────── */
+
+.c-admin__panels {
+	display: grid;
+	grid-template-columns: repeat(3, 1fr);
+	gap: var(--space-md);
+	align-items: start;
+	margin-block-start: var(--space-md);
+}
+
+.c-admin__panels .c-admin__section {
+	margin-block-start: 0;
 }
 
 .c-admin__label {

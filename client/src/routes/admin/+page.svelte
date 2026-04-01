@@ -6,15 +6,29 @@
 	import PoolView from '$lib/components/PoolView.svelte';
 	import SceneQueues from '$lib/components/SceneQueues.svelte';
 	import SlotTimers from '$lib/components/SlotTimers.svelte';
+	import BroadcastLog from '$lib/components/BroadcastLog.svelte';
 </script>
 
 <main class="c-admin">
-	<h1>Admin</h1>
-	<ServerStatus />
-	<JamControls />
+	<div class="c-admin__topbar">
+		<ServerStatus />
+		<JamControls />
+	</div>
+	<div class="c-stack c-stack--row c-stack--gap-lg">
+		<div class="monitor">
+			<BroadcastPreview />
+		</div>
+		<BroadcastLog />
+	</div>
+	<div class="c-admin__panels">
+		<SlotTimers />
+		<SceneQueues />
+
+	</div>
 	<ScheduleControl />
-	<BroadcastPreview />
-	<SlotTimers />
-	<SceneQueues />
 	<PoolView />
 </main>
+
+<style>
+	.monitor{flex: 1}
+</style>

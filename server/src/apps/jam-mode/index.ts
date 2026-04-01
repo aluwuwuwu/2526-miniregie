@@ -5,12 +5,15 @@
 
 import type { AppId, LayoutName, MediaItem } from "@shared/types";
 import type { PoolManager } from "../../pool";
+import type { Socket } from "socket.io";
 import { getJamConfig } from '../../jam-config.js';
 import { BaseApp } from "../base-app.js";
 import { resolveLayout, assignSlots, type SlotAssignment } from "./layout-engine.js";
 import { SlotTimer, type SlotName, type SlotTimerMeta } from "./slot-timer.js";
 import { LowerThirdOrchestrator, type LowerThirdPayload } from "./lower-third.js";
+import { SlotChyronOrchestrator, type SlotChyronPayload } from "./slot-chyron.js";
 import { EnrichmentPoller } from "./enrich-poller.js";
+import { TickerTracker } from "./ticker-tracker.js";
 
 // ─── JamModeQueues ────────────────────────────────────────────────────────────
 
@@ -21,7 +24,7 @@ export interface JamModeQueues {
   ticker: MediaItem[]; // ticker         → ticker belt (cycled independently)
 }
 
-export type { LowerThirdPayload };
+export type { LowerThirdPayload, SlotChyronPayload };
 
 // ─── JamModeApp ───────────────────────────────────────────────────────────────
 
@@ -29,11 +32,22 @@ export class JamModeApp extends BaseApp {
   readonly id: AppId = 'jam-mode';
   readonly outroMode = 'sequential' as const;
 
-  private readonly pool:            PoolManager;
-  private readonly slotTimer:       SlotTimer;
-  private readonly lowerThird:      LowerThirdOrchestrator;
-  private readonly enrichPoller:    EnrichmentPoller;
+  private readonly pool:             PoolManager;
+  private readonly slotTimer:        SlotTimer;
+  private readonly lowerThird:       LowerThirdOrchestrator;
+  private readonly slotChyron:       SlotChyronOrchestrator;
+  private readonly enrichPoller:     EnrichmentPoller;
+  private readonly tickerTracker:    TickerTracker;
   private readonly enrichIntervalMs: number;
+
+  // Bound socket handlers — stored for clean removal in stop()
+  private readonly _onTickerPass = (itemIds: string[]): void => {
+    this.tickerTracker.recordPass(itemIds, (id) => this.pool.markDisplayed(id, this.id));
+  };
+
+  private readonly _onConnection = (socket: Socket): void => {
+    socket.on('ticker:pass', this._onTickerPass);
+  };
 
   queues: JamModeQueues = { loud: [], visual: [], note: [], ticker: [] };
   layout: LayoutName    = 'IDLE';
@@ -44,8 +58,10 @@ export class JamModeApp extends BaseApp {
     this.pool              = pool;
     const cfg              = getJamConfig().jamMode;
     this.enrichIntervalMs  = cfg.enrichCheckMs;
-    this.slotTimer         = new SlotTimer(cfg, (slot) => this.onSlotExpired(slot));
-    this.lowerThird = new LowerThirdOrchestrator((event, payload) => this.io.emit(event, payload));
+    this.slotTimer      = new SlotTimer(cfg, (slot) => this.onSlotExpired(slot));
+    this.lowerThird     = new LowerThirdOrchestrator((event, payload) => this.io.emit(event, payload));
+    this.slotChyron     = new SlotChyronOrchestrator((event, payload) => this.io.emit(event, payload));
+    this.tickerTracker  = new TickerTracker();
     this.enrichPoller = new EnrichmentPoller(
       cfg.enrichCheckMs,
       () => {
@@ -70,13 +86,24 @@ export class JamModeApp extends BaseApp {
   }
 
   play(): void {
+    // Attach ticker:pass listener to all connected sockets and new connections
+    for (const socket of this.io.sockets.sockets.values()) {
+      socket.on('ticker:pass', this._onTickerPass);
+    }
+    this.io.on('connection', this._onConnection);
     this.applyLayout();
   }
 
   async stop(): Promise<void> {
+    this.io.off('connection', this._onConnection);
+    for (const socket of this.io.sockets.sockets.values()) {
+      socket.off('ticker:pass', this._onTickerPass);
+    }
     this.slotTimer.clearAll();
     this.enrichPoller.cancel();
     this.lowerThird.clear();
+    this.slotChyron.clear();
+    this.tickerTracker.clear();
   }
 
   remove(): void {
@@ -86,11 +113,12 @@ export class JamModeApp extends BaseApp {
   // ─── State (HTTP polling / reconnect) ────────────────────────────────────────
 
   override getState(): {
-    layout:     LayoutName;
-    slots:      SlotAssignment;
-    timing:     Partial<Record<SlotName, SlotTimerMeta>>;
-    lowerThird: LowerThirdPayload | null;
-    enrichCheckAt: number | null;
+    layout:      LayoutName;
+    slots:       SlotAssignment;
+    timing:      Partial<Record<SlotName, SlotTimerMeta>>;
+    lowerThird:   LowerThirdPayload | null;
+    slotChyron:   SlotChyronPayload | null;
+    enrichCheckAt: { checkAt: number; intervalMs: number } | null;
   } {
     const timing: Partial<Record<SlotName, SlotTimerMeta>> = {};
     for (const slot of ['loud', 'visual', 'note'] as SlotName[]) {
@@ -102,6 +130,7 @@ export class JamModeApp extends BaseApp {
       slots:         this.slots,
       timing,
       lowerThird:    this.lowerThird.getPayload(),
+      slotChyron:    this.slotChyron.getPayload(),
       enrichCheckAt: this.enrichPoller.getCheckAt() != null
       ? { checkAt: this.enrichPoller.getCheckAt()!, intervalMs: this.enrichIntervalMs }
       : null,
@@ -166,6 +195,7 @@ export class JamModeApp extends BaseApp {
     this.io.emit('jam-mode:layout', { layout: this.layout, slots: this.slots, timing });
 
     this.lowerThird.update(this.layout, this.slots);
+    this.slotChyron.update(this.layout, this.slots);
   }
 
   private onSlotExpired(slot: SlotName): void {
@@ -190,7 +220,7 @@ export class JamModeApp extends BaseApp {
   private fetchQueues(): JamModeQueues {
     return {
       loud:   this.pool.getMain({ types: ['youtube', 'clip'] }),
-      visual: this.pool.getMain({ types: ['photo', 'gif'] }),
+      visual: this.pool.getMain({ types: ['photo', 'gif', 'giphy'] }),
       note:   this.pool.getMain({ types: ['note'] }),
       ticker: this.pool.getMain({ types: ['ticker'] }),
     };

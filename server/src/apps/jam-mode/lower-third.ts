@@ -23,11 +23,35 @@ const ATTRIBUTION_HOLD_MS       = 6_000;
 const REATTRIBUTION_INTERVAL_MS = 90_000;
 const REATTRIBUTION_HOLD_MS     = 4_000;
 
-const LAYOUTS_WITH_LT = new Set<LayoutName>([
-  'VISUAL_FULL',
+// Lower-third = editorial title for the dominant slot.
+// Loud present → always the loud. Visual alone → caption-first, then author.
+//
+// LOUD_LT_LAYOUTS: layouts where the loud slot is the dominant item.
+// All others in LAYOUTS_WITH_LT use the visual slot.
+const LOUD_LT_LAYOUTS = new Set<LayoutName>([
   'MEDIA_FULL',
   'MEDIA_WITH_VISUAL',
+  'MEDIA_WITH_CAPTION',
+  'VERTICAL_MEDIA',
+  'VERTICAL_MEDIA_WITH_NOTE',
+]);
+
+const LAYOUTS_WITH_LT = new Set<LayoutName>([
+  // Visual-dominant
+  'VISUAL_FULL',
+  'VISUAL_WITH_CAPTION',
   'DUAL_VISUAL',
+  'PORTRAIT_FULL',
+  'PORTRAIT_WITH_NOTE',
+  'PORTRAIT_DUO',
+  'WIDE_VISUAL',
+  'WIDE_VISUAL_WITH_NOTE',
+  // Loud-dominant
+  'MEDIA_FULL',
+  'MEDIA_WITH_VISUAL',
+  'MEDIA_WITH_CAPTION',
+  'VERTICAL_MEDIA',
+  'VERTICAL_MEDIA_WITH_NOTE',
 ]);
 
 const TYPE_LABELS: Partial<Record<MediaItem['type'], string>> = {
@@ -46,9 +70,10 @@ const TYPE_LABELS: Partial<Record<MediaItem['type'], string>> = {
 export class LowerThirdOrchestrator {
   private readonly emit: EmitFn;
 
-  private itemId:     string | undefined;
-  private payload:    LowerThirdPayload | null = null;
-  private hideTimer:  ReturnType<typeof setTimeout> | undefined;
+  private itemId:    string | undefined;
+  private isVisual:  boolean = false;
+  private payload:   LowerThirdPayload | null = null;
+  private hideTimer: ReturnType<typeof setTimeout> | undefined;
   private reattTimer: ReturnType<typeof setTimeout> | undefined;
 
   constructor(emit: EmitFn) {
@@ -57,15 +82,16 @@ export class LowerThirdOrchestrator {
 
   // Called after every layout resolution.
   update(layout: LayoutName, slots: SlotAssignment): void {
-    const item = this.itemFor(layout, slots);
-    if (!item) {
+    const result = this.itemFor(layout, slots);
+    if (!result) {
       this.clear();
       return;
     }
-    if (item.id !== this.itemId) {
-      this.itemId = item.id;
+    if (result.item.id !== this.itemId) {
+      this.itemId   = result.item.id;
+      this.isVisual = result.isVisual;
       this.clearTimers();
-      this.show(item, ATTRIBUTION_HOLD_MS);
+      this.show(result.item, ATTRIBUTION_HOLD_MS);
     }
   }
 
@@ -85,13 +111,16 @@ export class LowerThirdOrchestrator {
 
   // ─── Private ─────────────────────────────────────────────────────────────────
 
-  private itemFor(layout: LayoutName, slots: SlotAssignment): MediaItem | undefined {
+  private itemFor(layout: LayoutName, slots: SlotAssignment): { item: MediaItem; isVisual: boolean } | undefined {
     if (!LAYOUTS_WITH_LT.has(layout)) return undefined;
-    return layout === 'MEDIA_FULL' ? slots.loud : slots.visual;
+    if (LOUD_LT_LAYOUTS.has(layout)) {
+      return slots.loud ? { item: slots.loud, isVisual: false } : undefined;
+    }
+    return slots.visual ? { item: slots.visual, isVisual: true } : undefined;
   }
 
   private show(item: MediaItem, holdMs: number): void {
-    this.payload = this.payloadFor(item);
+    this.payload = this.payloadFor(item, this.isVisual);
     this.emit('jam-mode:lower-third:show', this.payload);
     clearTimeout(this.hideTimer);
     this.hideTimer = setTimeout(() => {
@@ -119,7 +148,7 @@ export class LowerThirdOrchestrator {
     this.reattTimer = undefined;
   }
 
-  private payloadFor(item: MediaItem): LowerThirdPayload {
+  private payloadFor(item: MediaItem, isVisual: boolean): LowerThirdPayload {
     const label = TYPE_LABELS[item.type] ?? item.type;
     if (item.type === 'youtube') {
       return {
@@ -127,6 +156,10 @@ export class LowerThirdOrchestrator {
         name: (item.content as YoutubeContent).title,
         role: `Envoyé par ${item.author.displayName}`,
       };
+    }
+    if (isVisual) {
+      const caption = (item.content as { caption?: string | null }).caption;
+      if (caption) return { label, name: caption, role: item.author.displayName };
     }
     return { label, name: item.author.displayName, role: item.author.role ?? '' };
   }

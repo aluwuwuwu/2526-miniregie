@@ -17,10 +17,6 @@
 			alt={content.caption ?? ''}
 		/>
 	{/key}
-
-	{#if content.caption}
-		<p class="c-media-gif__caption">{content.caption}</p>
-	{/if}
 </div>
 
 <style>
