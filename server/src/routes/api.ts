@@ -4,7 +4,6 @@ import { requireAuth, requireRole } from "../middleware/auth.js";
 import {
   getAllItems,
   updateStatus,
-  updatePriority,
   updateContent,
   deleteItem,
   getItemById,
@@ -35,7 +34,19 @@ const ADMIN_AUTHOR: MediaItem["author"] = {
 export default function createApiRouter(broadcast: BroadcastManager, pool: PoolManager, scene: SceneManager): Router {
   const router = Router();
 
-  // All API routes require admin role
+  // ─── Public broadcast routes (no auth) ───────────────────────────────────────
+
+  router.get("/state", (_req, res) => {
+    res.json(broadcast.getState());
+  });
+
+  router.get("/active-app/state", (_req, res) => {
+    const state = broadcast.getActiveAppState();
+    if (state === null) { res.status(204).end(); return; }
+    res.json(state);
+  });
+
+  // All other API routes require admin role
   router.use(requireAuth, requireRole("admin"));
 
   // ─── JAM control ─────────────────────────────────────────────────────────────
@@ -173,12 +184,6 @@ export default function createApiRouter(broadcast: BroadcastManager, pool: PoolM
     res.json({ ok: true });
   });
 
-  // ─── State ────────────────────────────────────────────────────────────────────
-
-  router.get("/state", (_req, res) => {
-    res.json(broadcast.getState());
-  });
-
   // ─── Items ────────────────────────────────────────────────────────────────────
 
   router.post("/items/create", (req, res) => {
@@ -201,8 +206,6 @@ export default function createApiRouter(broadcast: BroadcastManager, pool: PoolM
       return;
     }
 
-    // priority is DB-only: ticker=80, note=100. Passed to addDirectItem separately.
-    const itemPriority = type === "ticker" ? 80 : 100;
     const item: MediaItem = {
       id:            randomUUID(),
       type,
@@ -215,7 +218,7 @@ export default function createApiRouter(broadcast: BroadcastManager, pool: PoolM
       author:        ADMIN_AUTHOR,
     };
 
-    pool.addDirectItem(item, itemPriority);
+    pool.addDirectItem(item);
     res.status(201).json(item);
   });
 
@@ -283,8 +286,7 @@ export default function createApiRouter(broadcast: BroadcastManager, pool: PoolM
 
   router.patch("/items/:id", (req, res) => {
     const { id } = req.params as { id: string };
-    const { priority, caption, text } = req.body as {
-      priority?: unknown;
+    const { caption, text } = req.body as {
       caption?: unknown;
       text?: unknown;
     };
@@ -293,14 +295,6 @@ export default function createApiRouter(broadcast: BroadcastManager, pool: PoolM
     if (!item) {
       res.status(404).json({ error: "Item not found" });
       return;
-    }
-
-    if (priority !== undefined) {
-      if (typeof priority !== "number" || priority < 0 || priority > 999) {
-        res.status(400).json({ error: "priority must be a number between 0 and 999" });
-        return;
-      }
-      updatePriority(id, priority);
     }
 
     if (caption !== undefined || text !== undefined) {

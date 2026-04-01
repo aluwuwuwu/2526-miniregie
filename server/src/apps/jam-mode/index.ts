@@ -29,10 +29,11 @@ export class JamModeApp extends BaseApp {
   readonly id: AppId = 'jam-mode';
   readonly outroMode = 'sequential' as const;
 
-  private readonly pool:          PoolManager;
-  private readonly slotTimer:     SlotTimer;
-  private readonly lowerThird:    LowerThirdOrchestrator;
-  private readonly enrichPoller:  EnrichmentPoller;
+  private readonly pool:            PoolManager;
+  private readonly slotTimer:       SlotTimer;
+  private readonly lowerThird:      LowerThirdOrchestrator;
+  private readonly enrichPoller:    EnrichmentPoller;
+  private readonly enrichIntervalMs: number;
 
   queues: JamModeQueues = { loud: [], visual: [], note: [], ticker: [] };
   layout: LayoutName    = 'IDLE';
@@ -40,18 +41,26 @@ export class JamModeApp extends BaseApp {
 
   constructor(pool: PoolManager) {
     super();
-    this.pool         = pool;
-    const cfg         = getJamConfig().jamMode;
-    this.slotTimer    = new SlotTimer(cfg, (slot) => this.onSlotExpired(slot));
-    this.lowerThird   = new LowerThirdOrchestrator((event, payload) => this.io.emit(event, payload));
-    this.enrichPoller = new EnrichmentPoller(cfg.enrichCheckMs, () => {
-      this.queues = this.fetchQueues();
-      if (this.queues.visual.length > 0 || this.queues.note.length > 0) {
-        this.applyLayout();
-        return true;
-      }
-      return false;
-    });
+    this.pool              = pool;
+    const cfg              = getJamConfig().jamMode;
+    this.enrichIntervalMs  = cfg.enrichCheckMs;
+    this.slotTimer         = new SlotTimer(cfg, (slot) => this.onSlotExpired(slot));
+    this.lowerThird = new LowerThirdOrchestrator((event, payload) => this.io.emit(event, payload));
+    this.enrichPoller = new EnrichmentPoller(
+      cfg.enrichCheckMs,
+      () => {
+        this.queues = this.fetchQueues();
+        if (this.queues.visual.length > 0 || this.queues.note.length > 0) {
+          this.applyLayout();
+          return true;
+        }
+        return false;
+      },
+      (checkAt) => {
+        // Called each time a check is programmed (initial schedule + reschedule).
+        this.io.emit('jam-mode:enrich', { checkAt, intervalMs: this.enrichIntervalMs });
+      },
+    );
   }
 
   // ─── Lifecycle ───────────────────────────────────────────────────────────────
@@ -81,13 +90,22 @@ export class JamModeApp extends BaseApp {
     slots:      SlotAssignment;
     timing:     Partial<Record<SlotName, SlotTimerMeta>>;
     lowerThird: LowerThirdPayload | null;
+    enrichCheckAt: number | null;
   } {
     const timing: Partial<Record<SlotName, SlotTimerMeta>> = {};
     for (const slot of ['loud', 'visual', 'note'] as SlotName[]) {
       const m = this.slotTimer.getMeta(slot);
       if (m) timing[slot] = m;
     }
-    return { layout: this.layout, slots: this.slots, timing, lowerThird: this.lowerThird.getPayload() };
+    return {
+      layout:        this.layout,
+      slots:         this.slots,
+      timing,
+      lowerThird:    this.lowerThird.getPayload(),
+      enrichCheckAt: this.enrichPoller.getCheckAt() != null
+      ? { checkAt: this.enrichPoller.getCheckAt()!, intervalMs: this.enrichIntervalMs }
+      : null,
+    };
   }
 
   // ─── Pool delegation ─────────────────────────────────────────────────────────
@@ -138,12 +156,14 @@ export class JamModeApp extends BaseApp {
       if (m) timing[slot] = m;
     }
 
-    this.io.emit('jam-mode:layout', { layout: this.layout, slots: this.slots, timing });
-
     this.enrichPoller.cancel();
     if (this.slots.loud && !this.slots.visual && !this.slots.note) {
-      this.enrichPoller.schedule();
+      this.enrichPoller.schedule(); // onScheduled callback emits jam-mode:enrich { checkAt }
+    } else {
+      this.io.emit('jam-mode:enrich', null); // enrichment not applicable for this layout
     }
+
+    this.io.emit('jam-mode:layout', { layout: this.layout, slots: this.slots, timing });
 
     this.lowerThird.update(this.layout, this.slots);
   }

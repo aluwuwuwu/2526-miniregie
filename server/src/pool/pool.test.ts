@@ -61,7 +61,7 @@ function makeItem(overrides: Partial<MediaItem> & { id?: string } = {}): MediaIt
   return {
     id:            overrides.id ?? 'item-1',
     type:          overrides.type ?? 'photo',
-    content:       overrides.content ?? { url: '/uploads/foo.jpg', caption: null },
+    content:       overrides.content ?? { url: '/uploads/foo.jpg', aspectRatio: null, caption: null },
     queuePosition: overrides.queuePosition ?? null,
     status:        overrides.status ?? 'ready',
     submittedAt:   overrides.submittedAt ?? 1000,

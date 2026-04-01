@@ -104,10 +104,6 @@ export function updateContent(id: string, content: MediaItem['content']): void {
   db.update(mediaItems).set({ content }).where(eq(mediaItems.id, id)).run();
 }
 
-export function updatePriority(id: string, priority: number): void {
-  db.update(mediaItems).set({ priority }).where(eq(mediaItems.id, id)).run();
-}
-
 export function updateQueuePosition(id: string, queuePosition: number | null): void {
   db.update(mediaItems).set({ queuePosition: queuePosition ?? undefined }).where(eq(mediaItems.id, id)).run();
 }

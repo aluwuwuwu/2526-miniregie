@@ -60,7 +60,7 @@ export class BroadcastManager {
     this.pool     = options.pool;
     this.cfg      = getJamConfig().broadcast;
     this.schedule = new ScheduleService();
-    this.apps     = new AppManager();
+    this.apps     = new AppManager(options.io);
     this.state    = loadState(STATE_FILE) ?? buildInitialState();
     this.state.pool = this.pool.getStats(); // populate from DB on startup
 
@@ -72,6 +72,12 @@ export class BroadcastManager {
     this.setupPoolListeners();
     this.startTick();
     this.startPersist();
+
+    // Re-hydrate the active app after a server restart so it can emit its state.
+    const restoredAppId = this.state.broadcast.activeApp;
+    if (restoredAppId) {
+      void this.apps.transition(createApp(restoredAppId, this.pool));
+    }
   }
 
   // ─── Public API ─────────────────────────────────────────────────────────────
@@ -86,6 +92,10 @@ export class BroadcastManager {
 
   getState(): Readonly<GlobalState> {
     return this.state;
+  }
+
+  getActiveAppState(): unknown {
+    return this.apps.getActiveAppState();
   }
 
   getSchedule(): ReturnType<ScheduleService['get']> {
@@ -192,9 +202,6 @@ export class BroadcastManager {
 
     await this.apps.transition(createApp(trigger.appId, this.pool));
 
-    // Wait for client ack or failsafe timeout
-    await this.waitForTransitionAck();
-
     this.state.broadcast.transition = 'idle';
     this.isTransitioning = false;
 
@@ -210,15 +217,6 @@ export class BroadcastManager {
     // Process queued trigger
     const next = this.triggerQueue.shift();
     if (next) void this.executeTransition(next);
-  }
-
-  private waitForTransitionAck(): Promise<void> {
-    return new Promise<void>(resolve => {
-      setTimeout(() => {
-        this.logEvent('lifecycle_timeout', { method: 'transition', timeout_ms: this.cfg.transitionFailsafeMs });
-        resolve();
-      }, this.cfg.transitionFailsafeMs);
-    });
   }
 
   // ─── Scheduler tick ─────────────────────────────────────────────────────────
@@ -254,6 +252,8 @@ export class BroadcastManager {
 
     this.pool.on('item:ready', (itemId: string) => {
       this.io.emit('pool:item:ready', { itemId });
+      const item = this.pool.getMain().find(i => i.id === itemId);
+      if (item) this.apps.onPoolUpdate(item);
     });
   }
 
@@ -270,11 +270,14 @@ export class BroadcastManager {
 
   private isJamModeHolding(): boolean {
     return this.state.broadcast.activeApp === 'jam-mode'
-      && this.pool.getStats().readyCount === 0;
+      && this.pool.getStats().total === 0;
   }
 
   private emitState(): void {
-    this.state.broadcast.activeItemIds = []; // populated once the server-side fetch loop exists
+    const appState = this.apps.getActiveAppState() as { slots?: Partial<Record<string, { id: string } | undefined>> } | null;
+    this.state.broadcast.activeItemIds = appState?.slots
+      ? Object.values(appState.slots).filter((i): i is { id: string } => i != null).map(i => i.id)
+      : [];
     this.state.broadcast.regime        = this.isJamModeHolding() ? 'hold' : 'normal';
     this.state.broadcast.nextTriggerAt = this.schedule.getNextTriggerAt(this.state.jam);
     this.state.pool = this.pool.getStats(this.holdCount);

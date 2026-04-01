@@ -1,6 +1,6 @@
 import { io, type Socket } from 'socket.io-client';
 import type { GlobalState, LayoutName, MediaItem } from '@shared/types';
-import { jamModeState, type JamSlotTimings } from './jam-mode-state.svelte';
+import { jamModeState, type JamSlotTimings, type EnrichState } from './jam-mode-state.svelte';
 
 export interface LowerThirdState {
 	label: string;
@@ -11,11 +11,12 @@ export interface LowerThirdState {
 async function syncActiveAppState(): Promise<void> {
 	const res = await fetch('/api/active-app/state');
 	if (res.status === 204) return;
-	const data = await res.json() as { layout?: LayoutName; slots?: JamSlots; timing?: JamSlotTimings; lowerThird?: LowerThirdState | null };
-	if (data.layout     !== undefined) serverState.jamLayout   = data.layout;
-	if (data.slots      !== undefined) serverState.jamSlots    = data.slots;
-	if (data.timing     !== undefined) jamModeState.slotTimings = data.timing;
-	if (data.lowerThird !== undefined) serverState.lowerThird  = data.lowerThird ?? null;
+	const data = await res.json() as { layout?: LayoutName; slots?: JamSlots; timing?: JamSlotTimings; lowerThird?: LowerThirdState | null; enrichCheckAt?: EnrichState | null };
+	if (data.layout        !== undefined) serverState.jamLayout    = data.layout;
+	if (data.slots         !== undefined) serverState.jamSlots     = data.slots;
+	if (data.timing        !== undefined) jamModeState.slotTimings = data.timing;
+	if (data.lowerThird    !== undefined) serverState.lowerThird   = data.lowerThird ?? null;
+	if (data.enrichCheckAt !== undefined) jamModeState.enrich      = data.enrichCheckAt ?? null;
 }
 
 export interface JamSlots {
@@ -62,9 +63,13 @@ export function connectSocket(): void {
 	});
 
 	socket.on('jam-mode:layout', (data: { layout: LayoutName; slots: JamSlots; timing?: JamSlotTimings }) => {
-		serverState.jamLayout      = data.layout;
-		serverState.jamSlots       = data.slots;
-		jamModeState.slotTimings   = data.timing ?? {};
+		serverState.jamLayout    = data.layout;
+		serverState.jamSlots     = data.slots;
+		jamModeState.slotTimings = data.timing ?? {};
+	});
+
+	socket.on('jam-mode:enrich', (data: EnrichState | null) => {
+		jamModeState.enrich = data ?? null;
 	});
 
 	socket.on('jam-mode:lower-third:show', (data: LowerThirdState) => {

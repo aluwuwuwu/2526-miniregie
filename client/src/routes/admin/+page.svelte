@@ -5,6 +5,7 @@
 	import BroadcastPreview from '$lib/components/BroadcastPreview.svelte';
 	import PoolView from '$lib/components/PoolView.svelte';
 	import SceneQueues from '$lib/components/SceneQueues.svelte';
+	import SlotTimers from '$lib/components/SlotTimers.svelte';
 </script>
 
 <main class="c-admin">
@@ -13,7 +14,7 @@
 	<JamControls />
 	<ScheduleControl />
 	<BroadcastPreview />
+	<SlotTimers />
 	<SceneQueues />
 	<PoolView />
-
 </main>

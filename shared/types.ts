@@ -1,6 +1,6 @@
 // ─── Media ───────────────────────────────────────────────────────────────────
 
-export type MediaType = 'photo' | 'gif' | 'note' | 'clip' | 'link' | 'youtube' | 'interview' | 'ticker';
+export type MediaType = 'photo' | 'gif' | 'giphy' | 'note' | 'clip' | 'link' | 'youtube' | 'interview' | 'ticker';
 export type MediaStatus = 'pending' | 'ready' | 'played' | 'evicted';
 export type MediaEventType = 'displayed' | 'skipped' | 'held' | 'evicted' | 'enriched' | 'replayed';
 
@@ -17,6 +17,7 @@ export interface MediaItem {
 export type MediaContent =
   | PhotoContent
   | GifContent
+  | GiphyContent
   | NoteContent
   | ClipContent
   | LinkContent
@@ -24,12 +25,20 @@ export type MediaContent =
   | InterviewContent
   | TickerContent;
 
-export interface PhotoContent  { url: string; caption: string | null }
-export interface GifContent    { url: string; caption: string | null }
-export interface NoteContent   { text: string }
-export interface ClipContent   { url: string; duration: number; mimeType: string; caption: string | null }
-export interface LinkContent   { url: string; title: string | null; description: string | null; thumbnail: string | null; siteName: string | null; caption: string | null }
-export interface YoutubeContent { url: string; youtubeId: string; title: string; duration: number; thumbnail: string; caption: string | null }
+export interface PhotoContent   { url: string; aspectRatio: number | null; caption: string | null }
+export interface GifContent     { url: string; aspectRatio: number | null; caption: string | null }
+export interface GiphyContent   {
+  giphyId:     string;
+  url:         string;    // direct .gif URL (media.giphy.com)
+  mp4Url:      string;    // .mp4 version — prefer for <video> elements
+  title:       string | null;
+  aspectRatio: number | null;
+  caption:     string | null;
+}
+export interface NoteContent    { text: string }
+export interface ClipContent    { url: string; duration: number; mimeType: string; aspectRatio: number | null; caption: string | null }
+export interface LinkContent    { url: string; title: string | null; description: string | null; thumbnail: string | null; siteName: string | null; caption: string | null }
+export interface YoutubeContent { url: string; youtubeId: string; title: string; duration: number; thumbnail: string; aspectRatio: number | null; caption: string | null }
 export interface TickerContent { text: string; label?: string }
 export interface InterviewContent {
   segments: InterviewSegment[];
@@ -135,7 +144,6 @@ export interface GlobalState {
   };
   pool: {
     total:         number;
-    fresh:         number;
     queueSnapshot: MediaItem[];
     // Health fields
     byType:    Record<string, number>; // { photo: 5, note: 12, … }
@@ -211,15 +219,25 @@ export interface ScheduleEntry {
 // ─── Scene ────────────────────────────────────────────────────────────────────
 
 export type LayoutName =
+  // ── Aspect-neutral (original) ──────────────────────────────────────────────
   | 'IDLE'
-  | 'MEDIA_FULL'
-  | 'VISUAL_FULL'
   | 'NOTE_CARD'
-  | 'MEDIA_WITH_VISUAL'
-  | 'MEDIA_WITH_CAPTION'
-  | 'MEDIA_VIS_CAP'
+  | 'VISUAL_FULL'
   | 'VISUAL_WITH_CAPTION'
-  | 'DUAL_VISUAL';
+  | 'DUAL_VISUAL'
+  | 'MEDIA_FULL'
+  | 'MEDIA_WITH_CAPTION'
+  | 'MEDIA_WITH_VISUAL'
+  // ── Portrait visual (AR < 0.8) ─────────────────────────────────────────────
+  | 'PORTRAIT_FULL'           // single portrait visual, pillarboxed
+  | 'PORTRAIT_DUO'            // two portrait visuals side by side
+  | 'PORTRAIT_WITH_NOTE'      // portrait visual left + note right
+  // ── Vertical media (AR < 0.8 loud) ────────────────────────────────────────
+  | 'VERTICAL_MEDIA'          // vertical clip/video centered
+  | 'VERTICAL_MEDIA_WITH_NOTE'// vertical clip/video + note alongside
+  // ── Wide / panoramic visual (AR > 1.8) ────────────────────────────────────
+  | 'WIDE_VISUAL'             // ultra-wide visual full width
+  | 'WIDE_VISUAL_WITH_NOTE';  // ultra-wide visual + note below
 
 export interface LoudSlot {
   kind: 'loud';

@@ -1,4 +1,5 @@
 :root {
+	/* ── Spacing ────────────────────────────────────────────── */
 	--space-2xs: 0.25rem;
 	--space-xs:  0.5rem;
 	--space-sm:  0.75rem;
@@ -7,7 +8,51 @@
 	--space-xl:  2.5rem;
 	--space-2xl: 4rem;
 
-	/* Broadcast */
-	--color-broadcast-bg: #08090b;
+	/* ── Brand ──────────────────────────────────────────────── */
+	--color-brand:      #1ac0d7;
+	--color-brand-dark: #107c9d;
+
+	/* ── Surfaces éditoriales ───────────────────────────────── */
+	--color-surface: #f8f7f5; /* blanc tempéré — note card, lower-third block */
+
+	/* ── Broadcast ──────────────────────────────────────────── */
+	--color-broadcast-bg: #06080d;
 	--color-broadcast-fg: #f0f0f0;
+
+	/* ── Ink — hiérarchie blanc sur fond sombre ─────────────── */
+	/* Plancher absolu : 28% — en dessous = illisible en projection */
+	--color-ink-88: rgba(255, 255, 255, 0.88); /* corps note, texte principal  */
+	--color-ink-65: rgba(255, 255, 255, 0.65); /* auteur Fraunces 300          */
+	--color-ink-42: rgba(255, 255, 255, 0.42); /* eyebrow, label timestamp     */
+	--color-ink-28: rgba(255, 255, 255, 0.28); /* équipe, métadonnée           */
+
+	/* ── Rules ──────────────────────────────────────────────── */
+	--color-rule-soft: rgba(255, 255, 255, 0.08);
+
+	/* ── Typography ─────────────────────────────────────────── */
+	--font-display:   'Fraunces', serif;             /* noms propres UNIQUEMENT */
+	--font-editorial: 'Schibsted Grotesk', sans-serif; /* tout le reste         */
+	--fw-regular: 400;
+	--fw-medium:  500;
+	--fw-bold:    700;
+
+	/* ── Type scale broadcast — calibrated for Full HD 1920×1080 ── */
+	/* vw values control size at target resolution; maxes cap at ~2560px */
+	--broadcast-fz-2xs: clamp(9px,  0.72vw, 20px);
+	--broadcast-fz-xs:  clamp(10px, 0.85vw, 24px);
+	--broadcast-fz-sm:  clamp(12px, 1.10vw, 30px);
+	--broadcast-fz-md:  clamp(14px, 1.50vw, 40px);
+	--broadcast-fz-lg:  clamp(15px, 1.55vw, 42px);
+	--broadcast-fz-xl:  clamp(24px, 3.20vw, 80px);
+
+	/* ── Broadcast layout ───────────────────────────────────── */
+	--broadcast-space-safe: 2.2%;
+	--broadcast-h-ticker:   clamp(30px, 4%, 52px);
+
+	/* ── Broadcast transitions ──────────────────────────────── */
+	--broadcast-dur-wipe-out: 240ms;
+	--broadcast-dur-wipe-in:  400ms;
+	--broadcast-dur-geom:     680ms;
+	--broadcast-dur-stagger:  65ms;
+	--broadcast-dur-pause:    40ms;
 }

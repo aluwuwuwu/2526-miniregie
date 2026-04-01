@@ -1,7 +1,15 @@
 import { execFile } from 'node:child_process';
+import { createReadStream } from 'node:fs';
+import { createRequire } from 'node:module';
 import { basename } from 'node:path';
+import { fetchYoutubeMeta } from './youtube.js';
+import { fetchGiphyMeta } from './giphy.js';
 import type { MediaItem } from '../../../shared/types.js';
 import type { ValidatedInput } from './types.js';
+
+const require = createRequire(import.meta.url);
+// eslint-disable-next-line @typescript-eslint/no-require-imports
+const probe = require('probe-image-size') as typeof import('probe-image-size');
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -12,27 +20,45 @@ function buildUploadUrl(filePath: string): string {
   return `/uploads/${filename}`;
 }
 
-function ffprobeDuration(filePath: string): Promise<number | null> {
+interface FfprobeInfo {
+  durationMs:  number | null;
+  aspectRatio: number | null;
+}
+
+function ffprobeInfo(filePath: string): Promise<FfprobeInfo> {
   return new Promise((resolve) => {
     execFile(
       'ffprobe',
-      [
-        '-v', 'error',
-        '-show_entries', 'format=duration',
-        '-of', 'default=noprint_wrappers=1:nokey=1',
-        filePath,
-      ],
+      ['-v', 'quiet', '-print_format', 'json', '-show_streams', '-show_format', filePath],
       { timeout: 10_000 },
       (err, stdout) => {
-        if (err) {
-          resolve(null);
-          return;
+        if (err) { resolve({ durationMs: null, aspectRatio: null }); return; }
+        try {
+          const data = JSON.parse(stdout) as {
+            format?:  { duration?: string };
+            streams?: Array<{ codec_type?: string; width?: number; height?: number }>;
+          };
+          const durationMs = data.format?.duration
+            ? Math.round(parseFloat(data.format.duration) * 1000)
+            : null;
+          const video = data.streams?.find(s => s.codec_type === 'video');
+          const aspectRatio = video?.width && video?.height ? video.width / video.height : null;
+          resolve({ durationMs: isNaN(durationMs ?? NaN) ? null : durationMs, aspectRatio });
+        } catch {
+          resolve({ durationMs: null, aspectRatio: null });
         }
-        const seconds = parseFloat(stdout.trim());
-        resolve(isNaN(seconds) ? null : Math.round(seconds * 1000));
       },
     );
   });
+}
+
+async function probeImageAspect(filePath: string): Promise<number | null> {
+  try {
+    const result = await probe(createReadStream(filePath));
+    return result.width && result.height ? result.width / result.height : null;
+  } catch {
+    return null;
+  }
 }
 
 async function fetchLinkMeta(url: string): Promise<{
@@ -90,35 +116,36 @@ export async function resolve(item: {
   switch (item.type) {
     case 'photo': {
       if (!item.filePath) {
-        return { url: '', caption: null };
+        return { url: '', aspectRatio: null, caption: null };
       }
       const url = buildUploadUrl(item.filePath);
-      return { url, caption: null };
+      const aspectRatio = await probeImageAspect(item.filePath);
+      return { url, aspectRatio, caption: null };
     }
 
     case 'gif': {
       if (!item.filePath) {
-        return { url: '', caption: null };
+        return { url: '', aspectRatio: null, caption: null };
       }
       const url = buildUploadUrl(item.filePath);
-      return { url, caption: null };
+      const aspectRatio = await probeImageAspect(item.filePath);
+      return { url, aspectRatio, caption: null };
     }
 
     case 'clip': {
       if (!item.filePath) {
-        return { url: '', duration: 0, mimeType: '', caption: null };
+        return { url: '', duration: 0, mimeType: '', aspectRatio: null, caption: null };
       }
       const url = buildUploadUrl(item.filePath);
       const validated = item.content as { mimetype: string; size: number };
-
-      // ffprobe returns ms; fallback to 0 if unavailable — never crash the pipeline
-      const durationMs = await ffprobeDuration(item.filePath) ?? 0;
+      const info = await ffprobeInfo(item.filePath);
 
       return {
         url,
-        duration: durationMs,
-        mimeType: validated.mimetype,
-        caption: null,
+        duration:    info.durationMs ?? 0,
+        mimeType:    validated.mimetype,
+        aspectRatio: info.aspectRatio,
+        caption:     null,
       };
     }
 
@@ -135,27 +162,35 @@ export async function resolve(item: {
       };
     }
 
+    case 'giphy': {
+      const validated = item.content as { url: string; giphyId: string };
+      const meta = await fetchGiphyMeta(validated.giphyId);
+      return {
+        giphyId:     validated.giphyId,
+        url:         meta.url,
+        mp4Url:      meta.mp4Url,
+        title:       meta.title,
+        aspectRatio: meta.aspectRatio,
+        caption:     null,
+      };
+    }
+
     case 'note': {
       const validated = item.content as { text: string };
       return { text: validated.text };
     }
 
     case 'youtube': {
-      // YouTube ID is already present in content from sanitize/enrich — no file resolution needed
-      const validated = item.content as {
-        url: string;
-        youtubeId: string;
-        title: string;
-        duration: number;
-        thumbnail: string;
-      };
+      const validated = item.content as { url: string; youtubeId: string };
+      const meta = await fetchYoutubeMeta(validated.youtubeId);
       return {
-        url:       validated.url       ?? '',
-        youtubeId: validated.youtubeId ?? '',
-        title:     validated.title     ?? '',
-        duration:  validated.duration  ?? 0,
-        thumbnail: validated.thumbnail ?? '',
-        caption:   null,
+        url:         validated.url,
+        youtubeId:   validated.youtubeId,
+        title:       meta.title,
+        duration:    meta.duration,
+        thumbnail:   meta.thumbnail,
+        aspectRatio: meta.aspectRatio,
+        caption:     null,
       };
     }
 

@@ -6,8 +6,33 @@
 }
 
 .o-broadcast {
-	background: var(--color-broadcast-bg);
+	position: relative;
+	background:
+		radial-gradient(ellipse 150% 90% at 50% -8%, #131f34 0%, transparent 50%),
+		radial-gradient(ellipse 70%  80% at 10% 70%, #0c1828 0%, transparent 48%),
+		var(--color-broadcast-bg);
 	color: var(--color-broadcast-fg);
 	width: 100%;
 	height: 100dvh;
+	overflow: hidden;
+}
+
+/* ── Layout area: 3-slot absolute positioning container ──────────────────── */
+
+.o-layout-area {
+	position: relative;
+	width: 100%;
+	height: 100%;
+	overflow: hidden;
+}
+
+.o-layout-area__slot {
+	position: absolute;
+	overflow: hidden;
+}
+
+/* Hidden state: slot stays in DOM (video decoder alive), just invisible */
+.o-layout-area__slot--hidden {
+	visibility: hidden;
+	pointer-events: none;
 }

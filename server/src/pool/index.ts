@@ -212,7 +212,16 @@ export class PoolManager extends EventEmitter {
   // ─── Broadcast events ────────────────────────────────────────────────────────
 
   markDisplayed(itemId: string, appId: string): void {
-    insertEvent({ id: randomUUID(), itemId, type: 'displayed', appId, payload: null, createdAt: Date.now() });
+    const item = getItemById(itemId);
+    if (!item) {
+      console.warn(`[pool] markDisplayed: item ${itemId} not found — skipping (stale timer?)`);
+      return;
+    }
+    try {
+      insertEvent({ id: randomUUID(), itemId, type: 'displayed', appId, payload: null, createdAt: Date.now() });
+    } catch (err) {
+      console.warn(`[pool] markDisplayed: failed to insert event for ${itemId}`, err);
+    }
     updateStatus(itemId, 'played');
     this.emit('update');
   }

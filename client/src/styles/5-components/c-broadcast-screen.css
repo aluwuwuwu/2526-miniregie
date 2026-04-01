@@ -1,0 +1,130 @@
+/* ─── c-broadcast-screen ─────────────────────────────────────────────────────
+ *
+ * Fills .o-broadcast (100% × 100dvh).
+ * Contains an .o-layout-area whose data-layout attribute drives slot geometry.
+ *
+ * Portrait constant (16:9 container):
+ *   slot at 9:16 AR, full height → width = (9/16)² × 100% ≈ 31.6%
+ *   centered: left ≈ 34.2%
+ *
+ */
+
+.c-broadcast-screen {
+	position: relative;
+	width: 100%;
+	height: 100%;
+}
+
+/* Vignette — assombrit les coins, valorise le centre */
+.c-broadcast-screen::before {
+	content: '';
+	position: absolute;
+	inset: 0;
+	z-index: 1;
+	background: radial-gradient(
+		ellipse 110% 100% at 50% 48%,
+		transparent 38%,
+		rgba(2, 3, 8, 0.58) 100%
+	);
+	pointer-events: none;
+}
+
+/* Breathing — couche lumière blanche 3.5%, cycle 9s */
+.c-broadcast-screen::after {
+	content: '';
+	position: absolute;
+	inset: 0;
+	z-index: 2;
+	background: #fff;
+	opacity: 0;
+	animation: broadcast-breathe 9s ease-in-out infinite;
+	pointer-events: none;
+}
+
+@keyframes broadcast-breathe {
+	0%, 100% { opacity: 0;     }
+	50%       { opacity: 0.035; }
+}
+
+.c-broadcast-screen__debug {
+	position: absolute;
+	z-index: 100;
+	top: 0.5rem;
+	left: 0.5rem;
+	font-family: monospace;
+	font-size: 0.65rem;
+	color: #1ac0d7;
+	background: rgba(8, 9, 11, 0.75);
+	padding: 0.2em 0.5em;
+	border-radius: 3px;
+	pointer-events: none;
+}
+
+/* ── IDLE ─────────────────────────────────────────────────────────────────── */
+
+.o-layout-area__slot--idle {
+	inset: 0;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+}
+
+/* ── Single-slot full-screen ─────────────────────────────────────────────── */
+
+[data-layout="MEDIA_FULL"]  .o-layout-area__slot--loud   { inset: 0; }
+[data-layout="VISUAL_FULL"] .o-layout-area__slot--visual { inset: 0; }
+[data-layout="NOTE_CARD"]   .o-layout-area__slot--note   { inset: 0; }
+
+/* ── Two-slot horizontal splits ──────────────────────────────────────────── */
+
+/* loud 68% | note 32% */
+[data-layout="MEDIA_WITH_CAPTION"] .o-layout-area__slot--loud { left: 0;   top: 0; width: 68%; height: 100%; }
+[data-layout="MEDIA_WITH_CAPTION"] .o-layout-area__slot--note { left: 68%; top: 0; width: 32%; height: 100%; }
+
+/* loud 62% | visual 38% */
+[data-layout="MEDIA_WITH_VISUAL"] .o-layout-area__slot--loud   { left: 0;   top: 0; width: 62%; height: 100%; }
+[data-layout="MEDIA_WITH_VISUAL"] .o-layout-area__slot--visual { left: 62%; top: 0; width: 38%; height: 100%; }
+
+/* visual 66% | note 34% */
+[data-layout="VISUAL_WITH_CAPTION"] .o-layout-area__slot--visual { left: 0;   top: 0; width: 66%; height: 100%; }
+[data-layout="VISUAL_WITH_CAPTION"] .o-layout-area__slot--note   { left: 66%; top: 0; width: 34%; height: 100%; }
+
+/* visual 50% | visual2 50% */
+[data-layout="DUAL_VISUAL"] .o-layout-area__slot--visual  { left: 0;   top: 0; width: 50%; height: 100%; }
+[data-layout="DUAL_VISUAL"] .o-layout-area__slot--visual2 { left: 50%; top: 0; width: 50%; height: 100%; }
+
+/* ── Portrait visuals (AR < 0.8) ─────────────────────────────────────────── */
+
+/* Single portrait visual, pillarboxed */
+[data-layout="PORTRAIT_FULL"] .o-layout-area__slot--visual {
+	left: 34.2%; top: 0; width: 31.6%; height: 100%;
+}
+
+/* Two portrait visuals side by side, pair centered in the screen */
+[data-layout="PORTRAIT_DUO"] .o-layout-area__slot--visual  { left: 17.4%; top: 0; width: 31.6%; height: 100%; }
+[data-layout="PORTRAIT_DUO"] .o-layout-area__slot--visual2 { left: 51%;   top: 0; width: 31.6%; height: 100%; }
+
+/* Portrait visual left + note filling the rest */
+[data-layout="PORTRAIT_WITH_NOTE"] .o-layout-area__slot--visual { left: 0;   top: 0; width: 31.6%; height: 100%; }
+[data-layout="PORTRAIT_WITH_NOTE"] .o-layout-area__slot--note   { left: 34%; top: 0; width: 66%;   height: 100%; }
+
+/* ── Vertical media (AR < 0.8 on loud slot) ──────────────────────────────── */
+
+/* Vertical video centered alone */
+[data-layout="VERTICAL_MEDIA"] .o-layout-area__slot--loud {
+	left: 34.2%; top: 0; width: 31.6%; height: 100%;
+}
+
+/* Vertical video left + note filling the rest */
+[data-layout="VERTICAL_MEDIA_WITH_NOTE"] .o-layout-area__slot--loud { left: 0;   top: 0; width: 31.6%; height: 100%; }
+[data-layout="VERTICAL_MEDIA_WITH_NOTE"] .o-layout-area__slot--note { left: 34%; top: 0; width: 66%;   height: 100%; }
+
+/* ── Wide / panoramic (AR > 1.8) ─────────────────────────────────────────── */
+
+/* Ultra-wide visual fills the screen */
+[data-layout="WIDE_VISUAL"] .o-layout-area__slot--visual { inset: 0; }
+
+/* Ultra-wide visual top + note strip below
+   On 16:9 a 21:9 image at full width = ~76% height; 72% leaves a small margin */
+[data-layout="WIDE_VISUAL_WITH_NOTE"] .o-layout-area__slot--visual { left: 0; top: 0;   width: 100%; height: 72%; }
+[data-layout="WIDE_VISUAL_WITH_NOTE"] .o-layout-area__slot--note   { left: 0; top: 72%; width: 100%; height: 28%; }

@@ -1,6 +1,39 @@
+import getId from 'get-youtube-id';
 import type { RawFile, RawInput, SanitizeResult, ValidatedInput } from './types.js';
 
 const MB = 1024 * 1024;
+
+
+// ─── Giphy URL → ID extraction ────────────────────────────────────────────────
+//
+// Supported formats:
+//   https://giphy.com/gifs/some-title-GIF_ID
+//   https://giphy.com/gifs/GIF_ID
+//   https://media.giphy.com/media/GIF_ID/giphy.gif
+//   https://media.giphy.com/media/GIF_ID/giphy.mp4
+
+function extractGiphyId(rawUrl: string): string | null {
+  try {
+    const url = new URL(rawUrl);
+    if (url.hostname === 'media.giphy.com' || url.hostname === 'media0.giphy.com') {
+      // /media/GIF_ID/giphy.gif
+      const parts = url.pathname.split('/').filter(Boolean);
+      if (parts[0] === 'media' && parts.length >= 2) return parts[1] ?? null;
+    }
+    if (url.hostname === 'giphy.com' || url.hostname === 'www.giphy.com') {
+      // /gifs/some-title-GIF_ID
+      const parts = url.pathname.split('/').filter(Boolean);
+      if (parts[0] === 'gifs' && parts.length >= 2) {
+        const slug = parts[1]!;
+        const lastDash = slug.lastIndexOf('-');
+        return lastDash >= 0 ? slug.slice(lastDash + 1) : slug;
+      }
+    }
+    return null;
+  } catch {
+    return null;
+  }
+}
 
 const PHOTO_MIMES = new Set(['image/jpeg', 'image/png']);
 const GIF_MIMES   = new Set(['image/gif']);
@@ -43,6 +76,18 @@ export function sanitize(input: RawInput): SanitizeResult {
       if (text.length === 0)   return { ok: false, error: 'Note text cannot be empty' };
       if (input.text.length > 280) return { ok: false, error: 'Note exceeds 280 characters' };
       return { ok: true, validated: { type: 'note', text: input.text } };
+    }
+
+    case 'youtube': {
+      const youtubeId = getId(input.url);
+      if (!youtubeId) return { ok: false, error: 'Could not extract a valid YouTube video ID from URL' };
+      return { ok: true, validated: { type: 'youtube', url: input.url, youtubeId } };
+    }
+
+    case 'giphy': {
+      const giphyId = extractGiphyId(input.url);
+      if (!giphyId) return { ok: false, error: 'Could not extract a valid Giphy GIF ID from URL' };
+      return { ok: true, validated: { type: 'giphy', url: input.url, giphyId } };
     }
 
     case 'link': {

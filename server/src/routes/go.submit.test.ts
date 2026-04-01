@@ -160,7 +160,7 @@ describe('POST /go/api/submit', () => {
       addItem: (_raw, _participantId) => ({
         id:            'item-photo',
         type:          'photo',
-        content:       { url: '/uploads/photo.jpg', caption: null },
+        content:       { url: '/uploads/photo.jpg', aspectRatio: null, caption: null },
         queuePosition: null,
         status:        'pending',
         submittedAt:   Date.now(),
@@ -194,7 +194,7 @@ describe('POST /go/api/submit', () => {
       addItem: (_raw, _participantId) => ({
         id:            'item-clip',
         type:          'clip',
-        content:       { url: '/uploads/clip.mp4', duration: 0, mimeType: 'video/mp4', caption: null },
+        content:       { url: '/uploads/clip.mp4', duration: 0, mimeType: 'video/mp4', aspectRatio: null, caption: null },
         queuePosition: null,
         status:        'pending',
         submittedAt:   Date.now(),

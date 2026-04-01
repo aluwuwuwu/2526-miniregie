@@ -73,7 +73,7 @@ export class SlotTimer {
     // loud slot: use the item's own duration (clip or youtube)
     if (item.type === 'clip' || item.type === 'youtube') {
       const d = (item.content as { duration: number }).duration;
-      return d > 0 ? d * 1000 : this.cfg.liveStreamMaxMs;
+      return d > 0 ? d : this.cfg.liveStreamMaxMs;
     }
 
     // Fallback — should not happen for a well-formed loud item

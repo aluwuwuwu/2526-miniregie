@@ -27,7 +27,7 @@ export function buildInitialState(): GlobalState {
       activeLayout:   null,
       nextPrediction: null,
     },
-    pool: { total: 0, fresh: 0, queueSnapshot: [], byType: {}, holdCount: 0 },
+    pool: { total: 0, queueSnapshot: [], byType: {}, holdCount: 0 },
   };
 }
 
@@ -63,7 +63,7 @@ export function loadState(statePath: string): GlobalState | null {
         activeLayout:   null,
         nextPrediction: null,
       },
-      pool: { total: 0, fresh: 0, queueSnapshot: [], byType: {}, holdCount: 0 },
+      pool: { total: 0, queueSnapshot: [], byType: {}, holdCount: 0 },
     };
   } catch {
     return null;
